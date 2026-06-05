@@ -51,6 +51,14 @@ async function loadMics() {
   const current = sel.dataset.value || '';
   sel.innerHTML = '<option value="">Default Microphone</option>';
   try {
+    // Device labels are hidden until the page has been granted mic access at
+    // least once — prime a getUserMedia call, then release it immediately.
+    try {
+      const probe = await navigator.mediaDevices.getUserMedia({ audio: true });
+      probe.getTracks().forEach((t) => t.stop());
+    } catch {
+      /* permission denied — we'll still list devices without labels */
+    }
     const devices = await navigator.mediaDevices.enumerateDevices();
     devices
       .filter((d) => d.kind === 'audioinput')
@@ -149,6 +157,71 @@ document.querySelectorAll('#v-engine input').forEach((r) =>
   r.addEventListener('change', (e) => showEnginePanel(e.target.value))
 );
 
+// ---- Local speech-to-text (Whisper) ----
+let sttState = { installed: false, models: ['base.en'], defaultModel: 'base.en' };
+
+function showSttPanel(engine) {
+  document.querySelectorAll('.stt-engine').forEach((el) => {
+    el.style.display = el.dataset.engine === engine ? '' : 'none';
+  });
+}
+
+async function loadSttState() {
+  try {
+    sttState = await window.jarvis.sttState();
+  } catch {
+    /* keep defaults */
+  }
+  fillSelect(
+    $('v-sttModel'),
+    sttState.models,
+    $('v-sttModel').dataset.value || sttState.defaultModel,
+    'unavailable'
+  );
+  $('v-stt-status').textContent = sttState.installed ? 'Installed.' : 'Not installed.';
+}
+
+$('v-stt-install').addEventListener('click', async () => {
+  $('v-stt-install').disabled = true;
+  $('v-stt-status').textContent = 'Starting install…';
+  const res = await window.jarvis.installStt($('v-sttModel').value);
+  $('v-stt-install').disabled = false;
+  if (res?.ok) {
+    $('v-stt-status').textContent = 'Installed. Ready to use.';
+    loadSttState();
+  } else {
+    $('v-stt-status').textContent = res?.error || 'Install failed.';
+  }
+});
+
+// Test: record ~3s from the chosen mic and show what Whisper heard.
+$('v-stt-test').addEventListener('click', async () => {
+  if (!window.AudioCapture) return;
+  const status = $('v-stt-status');
+  const rec = new window.AudioCapture.Recorder();
+  try {
+    status.textContent = 'Listening… speak now (3s).';
+    await rec.start($('v-micId').value || '');
+    await new Promise((r) => setTimeout(r, 3000));
+    status.textContent = 'Transcribing…';
+    const audio = await rec.stop();
+    const res = await window.jarvis.sttTranscribe(audio, $('v-sttModel').value);
+    if (res?.ok)
+      status.textContent = res.text ? `Heard: "${res.text}"` : 'Heard nothing — check your mic.';
+    else status.textContent = res?.error || 'Transcription failed.';
+  } catch (err) {
+    status.textContent = err.message || 'Mic error.';
+  }
+});
+
+window.jarvis.onSttInstallProgress?.(({ status }) => {
+  if (status) $('v-stt-status').textContent = status;
+});
+
+document.querySelectorAll('#v-sttEngine input').forEach((r) =>
+  r.addEventListener('change', (e) => showSttPanel(e.target.value))
+);
+
 async function loadModels(provider) {
   const sel = $('n-model');
   const current = sel.dataset.value || '';
@@ -201,10 +274,15 @@ function populate(s) {
   $('v-micId').dataset.value = s.voice.micId;
   $('v-piperVoice').dataset.value = s.voice.piperVoice || '';
   $('v-coquiModel').dataset.value = s.voice.coquiModel || '';
+  const sttEng = document.querySelector(`#v-sttEngine input[value="${s.voice.sttEngine}"]`);
+  if (sttEng) sttEng.checked = true;
+  $('v-sttModel').dataset.value = s.voice.sttModel || 'base.en';
   loadVoices();
   loadMics();
   loadTtsState();
+  loadSttState();
   showEnginePanel(s.voice.engine);
+  showSttPanel(s.voice.sttEngine);
 
   // Neural
   $('n-provider').value = s.neural.provider;
@@ -270,6 +348,8 @@ function collect() {
       autoListen: $('v-autoListen').checked,
       speakResponses: $('v-speakResponses').checked,
       startupGreeting: $('v-startupGreeting').checked,
+      sttEngine: radio('v-sttEngine') || 'browser',
+      sttModel: $('v-sttModel').value || 'base.en',
       voiceURI: $('v-voiceURI').value,
       micId: $('v-micId').value,
       piperVoice: $('v-piperVoice').value,

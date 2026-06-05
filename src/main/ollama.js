@@ -140,6 +140,33 @@ function createOllamaBrain(getHost) {
      * @param {Array<{role:'user'|'assistant', content:string}>} messages
      * @param {{model: string, onText:(t:string)=>void, onDone:(full:string)=>void, onError:(m:string)=>void, onTool?:(name:string)=>void}} cbs
      */
+    /**
+     * One-shot, non-streaming completion. Used for background tasks like
+     * memory extraction — no tools, low overhead. Returns '' on any error.
+     * @param {string} prompt
+     * @param {{model?: string}} [opts]
+     * @returns {Promise<string>}
+     */
+    async complete(prompt, { model } = {}) {
+      if (!model || !prompt) return '';
+      try {
+        const res = await fetch(`${host()}/api/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model,
+            stream: false,
+            messages: [{ role: 'user', content: prompt }],
+          }),
+        });
+        if (!res.ok) return '';
+        const data = await res.json();
+        return data?.message?.content || '';
+      } catch {
+        return '';
+      }
+    },
+
     async streamReply(messages, { model, options = {}, toolCtx = {}, onText, onDone, onError, onTool }) {
       if (!model) {
         onError('No Ollama model selected, sir.');

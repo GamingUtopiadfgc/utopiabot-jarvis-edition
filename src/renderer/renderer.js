@@ -703,12 +703,20 @@ if (SR) {
     if (said) handleUtterance(said);
   };
 } else {
-  micBtn.title = 'Voice input not supported in this build';
-  micBtn.style.opacity = '0.4';
+  // No browser recognizer — voice still works via local Whisper STT (Settings →
+  // Voice → Speech Input → Whisper), so leave the mic button usable.
+  micBtn.title = 'Browser voice input unavailable — switch to Whisper in Settings';
 }
 
+const useWhisper = () => appSettings?.voice.sttEngine === 'whisper';
+
 function toggleListen() {
-  if (!recognition || busy) return;
+  if (busy) return;
+  if (useWhisper()) {
+    whisperListening ? stopWhisperListen() : startWhisperListen();
+    return;
+  }
+  if (!recognition) return;
   if (listening) {
     recognition.stop();
   } else {
@@ -723,7 +731,15 @@ function toggleListen() {
 micBtn.onclick = toggleListen;
 
 function maybeAutoListen() {
-  if (autoListenToggle.checked && recognition && !busy && !listening) {
+  if (!autoListenToggle.checked || busy) return;
+  if (useWhisper()) {
+    if (!whisperListening)
+      setTimeout(() => {
+        if (!busy && !whisperListening) startWhisperListen();
+      }, 400);
+    return;
+  }
+  if (recognition && !listening) {
     setTimeout(() => {
       if (!busy && !listening) {
         try {
@@ -733,6 +749,107 @@ function maybeAutoListen() {
         }
       }
     }, 400);
+  }
+}
+
+// ===================================================================
+// Whisper (local STT): record mic audio, auto-stop on silence, transcribe.
+// ===================================================================
+let whisperRec = null;
+let whisperListening = false;
+let vadTimer = null;
+
+async function startWhisperListen() {
+  if (whisperListening || busy) return;
+  if (!window.AudioCapture) {
+    addMessage('JARVIS', 'Audio capture is unavailable in this build, sir.', 'msg-error');
+    return;
+  }
+  cancelSpeech();
+  whisperRec = new window.AudioCapture.Recorder();
+  try {
+    const stream = await whisperRec.start(appSettings?.voice.micId || '');
+    whisperListening = true;
+    micBtn.classList.add('listening');
+    setReactor('listening', 'LISTENING');
+    attachViz(stream, false); // the recorder owns this stream
+    startVad();
+  } catch {
+    whisperListening = false;
+    whisperRec = null;
+    micBtn.classList.remove('listening');
+    if (!busy) setReactor('standby');
+    addMessage('JARVIS', 'Microphone access was denied, sir. Check your system permissions.', 'msg-error');
+  }
+}
+
+async function stopWhisperListen() {
+  if (!whisperListening || !whisperRec) return;
+  stopVad();
+  whisperListening = false;
+  micBtn.classList.remove('listening');
+  let audio = '';
+  try {
+    audio = await whisperRec.stop();
+  } catch {
+    /* ignore — produces empty audio */
+  }
+  whisperRec = null;
+  stopMicViz();
+
+  if (!audio) {
+    if (!busy) setReactor('standby');
+    return;
+  }
+  setReactor('thinking', 'TRANSCRIBING');
+  const res = await window.jarvis.sttTranscribe(
+    audio,
+    appSettings?.voice.sttModel || 'base.en'
+  );
+  if (res?.ok && res.text) {
+    input.value = res.text;
+    handleUtterance(res.text);
+  } else {
+    if (res && !res.ok)
+      addMessage('JARVIS', res.error || 'I could not transcribe that, sir.', 'msg-error');
+    if (!busy) setReactor('standby');
+    maybeAutoListen();
+  }
+}
+
+// Lightweight voice-activity endpointing: once speech is detected, stop after a
+// short pause (or a hard cap) so the user doesn't have to click to finish.
+function startVad() {
+  let speechStarted = false;
+  let lastLoud = Date.now();
+  const started = Date.now();
+  const buf = new Uint8Array(analyser ? analyser.fftSize : 512);
+  vadTimer = setInterval(() => {
+    if (!analyser) return;
+    analyser.getByteTimeDomainData(buf);
+    let sum = 0;
+    for (let i = 0; i < buf.length; i++) {
+      const v = (buf[i] - 128) / 128;
+      sum += v * v;
+    }
+    const rms = Math.sqrt(sum / buf.length);
+    const now = Date.now();
+    if (rms > 0.03) {
+      speechStarted = true;
+      lastLoud = now;
+    }
+    const silentFor = now - lastLoud;
+    const tooLong = now - started > 15000;
+    if ((speechStarted && silentFor > 1200) || tooLong) {
+      stopVad();
+      stopWhisperListen();
+    }
+  }, 150);
+}
+function stopVad() {
+  if (vadTimer) {
+    clearInterval(vadTimer);
+    vadTimer = null;
   }
 }
 
@@ -804,26 +921,45 @@ function drawViz() {
 }
 drawViz();
 
+let micAudioCtx = null;
+let micStreamOwned = true; // false when an external recorder owns the stream
+
+async function openMic() {
+  const micId = appSettings?.voice.micId;
+  return navigator.mediaDevices.getUserMedia({
+    audio: micId ? { deviceId: { exact: micId } } : true,
+  });
+}
+
+// Drive the waveform from a live mic stream. If `owned` is false the caller
+// (e.g. the Whisper recorder) is responsible for stopping the stream's tracks.
+function attachViz(stream, owned = true) {
+  micStream = stream;
+  micStreamOwned = owned;
+  micAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const src = micAudioCtx.createMediaStreamSource(stream);
+  analyser = micAudioCtx.createAnalyser();
+  analyser.fftSize = 512;
+  src.connect(analyser);
+  vizMode = 'mic';
+}
+
 async function startMicViz() {
   try {
-    const micId = appSettings?.voice.micId;
-    micStream = await navigator.mediaDevices.getUserMedia({
-      audio: micId ? { deviceId: { exact: micId } } : true,
-    });
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const src = audioCtx.createMediaStreamSource(micStream);
-    analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 512;
-    src.connect(analyser);
-    vizMode = 'mic';
+    attachViz(await openMic(), true);
   } catch {
     vizMode = 'idle';
   }
 }
 function stopMicViz() {
-  if (micStream) {
+  if (micStream && micStreamOwned) {
     micStream.getTracks().forEach((t) => t.stop());
-    micStream = null;
+  }
+  micStream = null;
+  micStreamOwned = true;
+  if (micAudioCtx) {
+    micAudioCtx.close().catch(() => {});
+    micAudioCtx = null;
   }
   analyser = null;
   if (vizMode === 'mic') vizMode = 'idle';

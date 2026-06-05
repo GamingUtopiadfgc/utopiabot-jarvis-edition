@@ -77,6 +77,14 @@ contextBridge.exposeInMainWorld('jarvis', {
   ttsSynth: (engine, text, voice) =>
     ipcRenderer.invoke('tts:synth', { engine, text, voice }),
 
+  // Local speech-to-text (faster-whisper)
+  sttState: () => ipcRenderer.invoke('stt:state'),
+  installStt: (model) => ipcRenderer.invoke('stt:install', { model }),
+  onSttInstallProgress: (cb) =>
+    ipcRenderer.on('stt:install-progress', (_e, payload) => cb(payload)),
+  sttTranscribe: (audio, model, language) =>
+    ipcRenderer.invoke('stt:transcribe', { audio, model, language }),
+
   // System + dialogs
   getSystemStats: () => ipcRenderer.invoke('system:stats'),
   pickFolder: () => ipcRenderer.invoke('dialog:pickFolder'),

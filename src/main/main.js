@@ -44,7 +44,9 @@ const { runCommand } = require('./commands');
 const settingsStore = require('./settings');
 const { getStats } = require('./system');
 const { createMemory } = require('./memory');
+const { extractMemories } = require('./learner');
 const tts = require('./tts');
+const stt = require('./stt');
 
 const isDev = process.argv.includes('--dev');
 
@@ -100,6 +102,32 @@ function buildToolContext() {
     approve: approveCommand,
     memory: settings.memory.longTerm ? memory : null,
   };
+}
+
+// Auto-learn: in the background, extract durable facts from the latest turn and
+// save them to long-term memory. Fire-and-forget — never blocks or breaks the
+// reply. Gated by the caller (long-term memory + auto-learn both enabled).
+async function learnFromTurn(brain, model, messages, full) {
+  try {
+    const lastUser = [...messages].reverse().find((m) => m.role === 'user');
+    const userText = typeof lastUser?.content === 'string' ? lastUser.content : '';
+    if (!userText) return;
+    const turn = [
+      { role: 'user', content: userText },
+      { role: 'assistant', content: full },
+    ];
+    const facts = await extractMemories(
+      brain,
+      model,
+      turn,
+      memory.all().map((m) => m.text)
+    );
+    for (const f of facts) memory.add(f);
+    if (settings.advanced.debugLogs && facts.length)
+      console.log(`[auto-learn] saved ${facts.length} fact(s)`);
+  } catch (err) {
+    if (settings.advanced.debugLogs) console.error('[auto-learn] failed:', err);
+  }
 }
 
 // Resolve the app icon in both dev and packaged builds (bundled via extraResources).
@@ -242,6 +270,22 @@ ipcMain.handle(
 
     const brain = brains[provider] || brains.claude;
 
+    // Shared completion handling for both the normal and auto-pull-retry paths:
+    // stream the final text, optionally archive the transcript, and auto-learn.
+    const handleDone = (full) => {
+      send({ type: 'done', text: full });
+      if (!full?.trim()) return;
+      if (settings.memory.saveConversations) {
+        memory.saveConversation([
+          ...messages,
+          { role: 'assistant', content: full },
+        ]);
+      }
+      if (settings.memory.longTerm && settings.memory.autoSummarize) {
+        learnFromTurn(brain, model, messages, full); // fire-and-forget
+      }
+    };
+
     // Inject long-term memory relevant to the latest user turn.
     const opts = { ...(options || {}) };
     if (settings.memory.longTerm) {
@@ -264,15 +308,7 @@ ipcMain.handle(
         options: opts,
         toolCtx: buildToolContext(),
         onText: (text) => send({ type: 'text', text }),
-        onDone: (full) => {
-          send({ type: 'done', text: full });
-          if (settings.memory.saveConversations && full?.trim()) {
-            memory.saveConversation([
-              ...messages,
-              { role: 'assistant', content: full },
-            ]);
-          }
-        },
+        onDone: handleDone,
         onError: (message) => send({ type: 'error', message }),
         onTool: (name) => send({ type: 'tool', name }),
         onReset: () => send({ type: 'reset' }),
@@ -299,15 +335,7 @@ ipcMain.handle(
               options: opts,
               toolCtx: buildToolContext(),
               onText: (text) => send({ type: 'text', text }),
-              onDone: (full) => {
-                send({ type: 'done', text: full });
-                if (settings.memory.saveConversations && full?.trim()) {
-                  memory.saveConversation([
-                    ...messages,
-                    { role: 'assistant', content: full },
-                  ]);
-                }
-              },
+              onDone: handleDone,
               onError: (message) => send({ type: 'error', message }),
               onTool: (name) => send({ type: 'tool', name }),
               onReset: () => send({ type: 'reset' }),
@@ -468,6 +496,27 @@ ipcMain.handle('tts:install', async (_event, { engine }) => {
 
 ipcMain.handle('tts:synth', (_event, { engine, text, voice }) =>
   tts.synth(engine, { text, voice })
+);
+
+// ---- IPC: local speech-to-text (faster-whisper) ----
+ipcMain.handle('stt:state', () => stt.getSttState());
+
+ipcMain.handle('stt:install', async (_event, { model } = {}) => {
+  // Broadcast progress to every open window (install is driven from Settings).
+  const report = (status) => {
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (!w.isDestroyed()) w.webContents.send('stt:install-progress', { status });
+    }
+  };
+  try {
+    return await stt.install(report, model);
+  } catch (err) {
+    return { ok: false, error: err.message || String(err) };
+  }
+});
+
+ipcMain.handle('stt:transcribe', (_event, { audio, model, language } = {}) =>
+  stt.transcribe({ audioBase64: audio, model, language })
 );
 
 // ---- IPC: manual "Check for Updates" (Settings → Advanced) ----

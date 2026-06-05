@@ -24,6 +24,31 @@ function createBrain() {
     },
 
     /**
+     * One-shot, non-streaming completion. Used for background tasks like
+     * memory extraction — no tools, no thinking, small token budget.
+     * Returns '' if no API key is configured or on any error.
+     * @param {string} prompt
+     * @param {{model?: string}} [opts]
+     * @returns {Promise<string>}
+     */
+    async complete(prompt, { model } = {}) {
+      if (!client || !prompt) return '';
+      try {
+        const res = await client.messages.create({
+          model: model || DEFAULT_MODEL,
+          max_tokens: 400,
+          messages: [{ role: 'user', content: prompt }],
+        });
+        return (res.content || [])
+          .filter((b) => b.type === 'text')
+          .map((b) => b.text)
+          .join('');
+      } catch {
+        return '';
+      }
+    },
+
+    /**
      * Stream a reply for a multi-turn conversation, running file-access tools
      * as needed (the model can read its own source).
      * @param {Array<{role: 'user'|'assistant', content: any}>} messages

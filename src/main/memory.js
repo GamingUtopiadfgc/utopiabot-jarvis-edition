@@ -35,11 +35,20 @@ function createMemory(getFolder) {
   return {
     add(text) {
       if (!text || !text.trim()) return 0;
+      const clean = text.trim();
       const arr = load();
-      // Avoid storing near-duplicates.
-      if (arr.some((m) => m.text.toLowerCase() === text.trim().toLowerCase()))
+      // Reinforce an existing fact instead of duplicating it: bump recency and
+      // increment its hit count so repeated preferences rank higher in recall.
+      const dup = arr.find(
+        (m) => m.text.toLowerCase() === clean.toLowerCase()
+      );
+      if (dup) {
+        dup.ts = Date.now();
+        dup.hits = (dup.hits || 1) + 1;
+        save(arr);
         return arr.length;
-      arr.push({ text: text.trim(), ts: Date.now() });
+      }
+      arr.push({ text: clean, ts: Date.now(), hits: 1 });
       save(arr);
       return arr.length;
     },
@@ -54,17 +63,29 @@ function createMemory(getFolder) {
         .toLowerCase()
         .split(/\W+/)
         .filter((w) => w.length > 3);
+
+      const now = Date.now();
+      const DAY = 24 * 60 * 60 * 1000;
+      // Combined score: keyword overlap dominates, then a gentle nudge from how
+      // recent and how often-reinforced the fact is.
       const scored = arr.map((m) => {
         const t = m.text.toLowerCase();
-        let score = 0;
-        for (const w of words) if (t.includes(w)) score++;
-        return { m, score };
+        let keyword = 0;
+        for (const w of words) if (t.includes(w)) keyword++;
+        const ageDays = (now - (m.ts || 0)) / DAY;
+        const recency = 1 / (1 + Math.max(0, ageDays)); // (0, 1]
+        const frequency = Math.log2(1 + (m.hits || 1)); // grows slowly
+        return { m, keyword, score: keyword * 10 + frequency + recency };
       });
-      const matches = scored
-        .filter((s) => s.score > 0)
+
+      const hasMatch = scored.some((s) => s.keyword > 0);
+      // With keyword hits, rank by combined score but keep only matching facts.
+      // Otherwise fall back to the most recent / most-reinforced facts.
+      const pool = hasMatch ? scored.filter((s) => s.keyword > 0) : scored;
+      const pick = pool
         .sort((a, b) => b.score - a.score)
+        .slice(0, limit)
         .map((s) => s.m);
-      const pick = (matches.length ? matches : arr.slice(-limit)).slice(0, limit);
       return pick.map((m) => `- ${m.text}`).join('\n');
     },
     saveConversation(messages) {

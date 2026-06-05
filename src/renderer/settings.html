@@ -92,6 +92,26 @@
             <label>Microphone</label>
             <select id="v-micId" class="sel"></select>
           </div>
+
+          <!-- Speech input engine -->
+          <div class="field">
+            <label>Speech Input</label>
+            <div class="radios" id="v-sttEngine">
+              <label><input type="radio" name="v-sttEngine" value="browser" /><span>Browser</span></label>
+              <label><input type="radio" name="v-sttEngine" value="whisper" /><span>Whisper (local)</span></label>
+            </div>
+          </div>
+
+          <!-- Whisper engine: install + model picker -->
+          <div class="field stt-engine" data-engine="whisper">
+            <label>Whisper Model <i class="soon">(local, needs Python; first run downloads the model)</i></label>
+            <div class="row">
+              <select id="v-sttModel" class="sel"></select>
+              <button id="v-stt-install" class="btn-mini">Install</button>
+              <button id="v-stt-test" class="btn-mini">Test</button>
+            </div>
+            <div id="v-stt-status" class="soon" style="margin-top:6px"></div>
+          </div>
         </section>
 
         <!-- NEURAL CORE -->
@@ -142,7 +162,7 @@
           <h2>Memory Bank <i class="soon">(stored — engine coming soon)</i></h2>
           <label class="chk"><input type="checkbox" id="m-longTerm" /><span>Enable Long-Term Memory</span></label>
           <label class="chk"><input type="checkbox" id="m-saveConversations" /><span>Save Conversations</span></label>
-          <label class="chk"><input type="checkbox" id="m-autoSummarize" /><span>Auto Summarize Sessions</span></label>
+          <label class="chk"><input type="checkbox" id="m-autoSummarize" /><span>Auto-Learn from Conversations <i class="soon">(uses the active model to save facts after each reply)</i></span></label>
           <div class="field">
             <label>Memory Folder</label>
             <div class="row">
@@ -251,6 +271,7 @@
       <button id="s-save" class="btn-primary">SAVE CONFIGURATION</button>
     </footer>
 
+    <script src="audio.js"></script>
     <script src="settings-renderer.js"></script>
   </body>
 </html>

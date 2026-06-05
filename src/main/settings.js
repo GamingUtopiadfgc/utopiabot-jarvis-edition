@@ -20,6 +20,8 @@ const DEFAULTS = {
     autoListen: false,
     speakResponses: true,
     startupGreeting: true,
+    sttEngine: 'browser', // 'browser' | 'whisper' (local speech-to-text)
+    sttModel: 'base.en', // chosen faster-whisper model id
     voiceURI: '', // chosen SpeechSynthesis voice (windows engine)
     micId: '', // chosen microphone deviceId
     piperVoice: '', // chosen Piper voice id (blank = first installed)
