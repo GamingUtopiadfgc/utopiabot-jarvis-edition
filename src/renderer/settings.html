@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:;"
+    />
+    <title>UtopiaBot — Settings</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="settings.css" />
+  </head>
+  <body class="settings-body">
+    <header class="titlebar">
+      <div class="titlebar-drag">
+        <span class="brand">UTOPIA<span class="brand-accent">BOT</span></span>
+        <span class="brand-sub">SETTINGS</span>
+      </div>
+      <div class="window-controls">
+        <button id="s-close-x" class="close" title="Close" aria-label="Close">&#x2715;</button>
+      </div>
+    </header>
+
+    <div class="settings-shell">
+      <nav class="settings-nav" id="settings-nav">
+        <button class="nav-item active" data-sec="general">General</button>
+        <button class="nav-item" data-sec="voice">Voice</button>
+        <button class="nav-item" data-sec="neural">Neural Core</button>
+        <button class="nav-item" data-sec="memory">Memory Bank</button>
+        <button class="nav-item" data-sec="automation">Automation</button>
+        <button class="nav-item" data-sec="appearance">Appearance</button>
+        <button class="nav-item" data-sec="system">System</button>
+        <button class="nav-item" data-sec="advanced">Advanced</button>
+      </nav>
+
+      <main class="settings-content">
+        <!-- GENERAL -->
+        <section class="sec active" data-sec="general">
+          <h2>General</h2>
+          <label class="chk"><input type="checkbox" id="g-startWithWindows" /><span>Start With Windows</span></label>
+          <label class="chk"><input type="checkbox" id="g-minimizeToTray" /><span>Minimize To Tray</span></label>
+          <label class="chk"><input type="checkbox" id="g-notifications" /><span>Enable Notifications</span></label>
+          <label class="chk"><input type="checkbox" id="g-launchOllama" /><span>Launch Ollama Automatically</span></label>
+        </section>
+
+        <!-- VOICE -->
+        <section class="sec" data-sec="voice">
+          <h2>Voice</h2>
+          <div class="field">
+            <label>Voice Engine</label>
+            <div class="radios" id="v-engine">
+              <label><input type="radio" name="v-engine" value="windows" /><span>Windows TTS</span></label>
+              <label><input type="radio" name="v-engine" value="piper" /><span>Piper <i class="soon">(soon)</i></span></label>
+            </div>
+          </div>
+          <div class="field">
+            <label>Wake Word</label>
+            <input type="text" id="v-wakeWord" class="txt" />
+          </div>
+          <label class="chk"><input type="checkbox" id="v-enableWakeWord" /><span>Enable Wake Word</span></label>
+          <label class="chk"><input type="checkbox" id="v-autoListen" /><span>Auto Listen</span></label>
+          <label class="chk"><input type="checkbox" id="v-speakResponses" /><span>Speak Responses</span></label>
+          <label class="chk"><input type="checkbox" id="v-startupGreeting" /><span>Play Startup Greeting</span></label>
+          <div class="field">
+            <label>Voice</label>
+            <select id="v-voiceURI" class="sel"></select>
+          </div>
+          <div class="field">
+            <label>Microphone</label>
+            <select id="v-micId" class="sel"></select>
+          </div>
+        </section>
+
+        <!-- NEURAL CORE -->
+        <section class="sec" data-sec="neural">
+          <h2>Neural Core</h2>
+          <div class="field">
+            <label>Provider</label>
+            <select id="n-provider" class="sel">
+              <option value="ollama">Ollama</option>
+              <option value="claude">Claude</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Model</label>
+            <select id="n-model" class="sel"></select>
+          </div>
+          <div class="field">
+            <label>Temperature <b id="n-temp-val">0.7</b> <i class="soon">(Ollama only)</i></label>
+            <input type="range" id="n-temperature" min="0" max="2" step="0.05" />
+          </div>
+          <div class="field">
+            <label>Context Length</label>
+            <input type="number" id="n-contextLength" class="txt num" min="512" step="512" />
+          </div>
+          <div class="field">
+            <label>Max Tokens</label>
+            <input type="number" id="n-maxTokens" class="txt num" min="64" step="64" />
+          </div>
+          <div class="field">
+            <label>System Prompt <i class="soon">(blank = built-in JARVIS persona)</i></label>
+            <textarea id="n-systemPrompt" class="area" rows="5"></textarea>
+          </div>
+        </section>
+
+        <!-- MEMORY BANK -->
+        <section class="sec" data-sec="memory">
+          <h2>Memory Bank <i class="soon">(stored — engine coming soon)</i></h2>
+          <label class="chk"><input type="checkbox" id="m-longTerm" /><span>Enable Long-Term Memory</span></label>
+          <label class="chk"><input type="checkbox" id="m-saveConversations" /><span>Save Conversations</span></label>
+          <label class="chk"><input type="checkbox" id="m-autoSummarize" /><span>Auto Summarize Sessions</span></label>
+          <div class="field">
+            <label>Memory Folder</label>
+            <div class="row">
+              <input type="text" id="m-folder" class="txt" placeholder="E:\UtopiaBot-AI\memory" />
+              <button id="m-folder-pick" class="btn-mini">Browse</button>
+            </div>
+          </div>
+          <div class="field">
+            <label>Vector Database</label>
+            <div class="radios" id="m-vectorDb">
+              <label><input type="radio" name="m-vectorDb" value="faiss" /><span>FAISS</span></label>
+              <label><input type="radio" name="m-vectorDb" value="chromadb" /><span>ChromaDB</span></label>
+            </div>
+          </div>
+        </section>
+
+        <!-- AUTOMATION -->
+        <section class="sec" data-sec="automation">
+          <h2>Automation <i class="soon">(stored — execution gated for safety)</i></h2>
+          <label class="chk"><input type="checkbox" id="a-desktopControl" /><span>Enable Desktop Control</span></label>
+          <label class="chk"><input type="checkbox" id="a-powershell" /><span>Enable PowerShell Access</span></label>
+          <label class="chk"><input type="checkbox" id="a-browserControl" /><span>Enable Browser Control</span></label>
+          <label class="chk"><input type="checkbox" id="a-requireApproval" /><span>Require Approval Before Actions</span></label>
+          <div class="field">
+            <label>Security Level</label>
+            <div class="radios" id="a-securityLevel">
+              <label><input type="radio" name="a-securityLevel" value="strict" /><span>Strict</span></label>
+              <label><input type="radio" name="a-securityLevel" value="normal" /><span>Normal</span></label>
+              <label><input type="radio" name="a-securityLevel" value="developer" /><span>Developer</span></label>
+            </div>
+          </div>
+        </section>
+
+        <!-- APPEARANCE -->
+        <section class="sec" data-sec="appearance">
+          <h2>Appearance</h2>
+          <div class="field">
+            <label>Theme</label>
+            <div class="radios theme-radios" id="ap-theme">
+              <label><input type="radio" name="ap-theme" value="jarvis" /><span class="sw sw-jarvis"></span>Jarvis Blue</label>
+              <label><input type="radio" name="ap-theme" value="red" /><span class="sw sw-red"></span>Dark Red</label>
+              <label><input type="radio" name="ap-theme" value="emerald" /><span class="sw sw-emerald"></span>Emerald</label>
+              <label><input type="radio" name="ap-theme" value="purple" /><span class="sw sw-purple"></span>Purple</label>
+            </div>
+          </div>
+          <div class="field">
+            <label>Font Scale <b id="ap-scale-val">100%</b></label>
+            <input type="range" id="ap-fontScale" min="0.8" max="1.4" step="0.05" />
+          </div>
+          <label class="chk"><input type="checkbox" id="ap-waveform" /><span>Waveform Animation</span></label>
+          <label class="chk"><input type="checkbox" id="ap-particles" /><span>Particle Effects</span></label>
+        </section>
+
+        <!-- SYSTEM -->
+        <section class="sec" data-sec="system">
+          <h2>System</h2>
+          <div class="stat-grid">
+            <div class="stat-box"><span>OLLAMA</span><b id="sys-ollama">—</b></div>
+            <div class="stat-box"><span>VOICE</span><b id="sys-voice">—</b></div>
+            <div class="stat-box"><span>MEMORY</span><b id="sys-memory">—</b></div>
+            <div class="stat-box"><span>CPU</span><b id="sys-cpu">—</b></div>
+            <div class="stat-box"><span>RAM</span><b id="sys-ram">—</b></div>
+            <div class="stat-box"><span>GPU</span><b id="sys-gpu">—</b></div>
+          </div>
+        </section>
+
+        <!-- ADVANCED -->
+        <section class="sec" data-sec="advanced">
+          <h2>Advanced</h2>
+          <label class="chk"><input type="checkbox" id="x-debugLogs" /><span>Enable Debug Logs</span></label>
+          <label class="chk"><input type="checkbox" id="x-devConsole" /><span>Enable Developer Console</span></label>
+          <label class="chk"><input type="checkbox" id="x-apiServer" /><span>Enable API Server <i class="soon">(soon)</i></span></label>
+          <div class="field">
+            <label>API Port</label>
+            <input type="number" id="x-apiPort" class="txt num" min="1" max="65535" />
+          </div>
+          <div class="field">
+            <label>Ollama URL</label>
+            <input type="text" id="x-ollamaUrl" class="txt" />
+          </div>
+          <label class="chk"><input type="checkbox" id="x-memoryApi" /><span>Memory API Enabled</span></label>
+        </section>
+      </main>
+    </div>
+
+    <footer class="settings-footer">
+      <span class="save-note" id="save-note"></span>
+      <button id="s-reset" class="btn-ghost">RESET TO DEFAULTS</button>
+      <button id="s-close" class="btn-ghost">CLOSE</button>
+      <button id="s-save" class="btn-primary">SAVE CONFIGURATION</button>
+    </footer>
+
+    <script src="settings-renderer.js"></script>
+  </body>
+</html>

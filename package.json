@@ -1,0 +1,76 @@
+{
+  "name": "utopiabot-jarvis-edition",
+  "version": "0.1.0",
+  "description": "UtopiaBot — a Jarvis-style desktop AI assistant with an arc-reactor HUD, voice, and a Claude brain.",
+  "main": "src/main/main.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "icon": "node build/make-icon.js",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "release": "electron-builder --publish always"
+  },
+  "keywords": [
+    "jarvis",
+    "assistant",
+    "electron",
+    "ai",
+    "claude"
+  ],
+  "author": "UtopiaBot",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.65.0",
+    "dotenv": "^16.4.7",
+    "electron-updater": "^6.3.9"
+  },
+  "devDependencies": {
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.utopiabot.jarvis",
+    "productName": "UtopiaBot JARVIS",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "**/*",
+      "!.env",
+      "!build/**",
+      "!dist/**",
+      "!*.log"
+    ],
+    "extraResources": [
+      {
+        "from": "build/icon.png",
+        "to": "icon.png"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.ico"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "GamingUtopiadfgc",
+        "repo": "utopiabot-jarvis-edition"
+      }
+    ],
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "UtopiaBot JARVIS",
+      "uninstallDisplayName": "UtopiaBot JARVIS"
+    }
+  }
+}

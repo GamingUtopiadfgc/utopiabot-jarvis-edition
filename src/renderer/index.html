@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:;"
+    />
+    <title>UtopiaBot — JARVIS</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <!-- Draggable top chrome for the frameless window -->
+    <header class="titlebar">
+      <div class="titlebar-drag">
+        <span class="brand">UTOPIA<span class="brand-accent">BOT</span></span>
+        <span class="brand-sub">JARVIS EDITION</span>
+      </div>
+      <div class="window-controls">
+        <button id="settings-btn" title="Settings" aria-label="Settings">&#x2699;</button>
+        <button id="min-btn" title="Minimize" aria-label="Minimize">&#x2013;</button>
+        <button id="max-btn" title="Maximize" aria-label="Maximize">&#x25A1;</button>
+        <button id="close-btn" class="close" title="Close" aria-label="Close">&#x2715;</button>
+      </div>
+    </header>
+
+    <main class="hud">
+      <!-- LEFT: status panels -->
+      <aside class="panel panel-left">
+        <div class="panel-card">
+          <div class="panel-label">NEURAL CORE</div>
+          <div class="select-row">
+            <select id="model-select" class="model-select" aria-label="Model">
+              <option value="">Scanning…</option>
+            </select>
+            <button id="model-refresh" class="icon-btn" title="Rescan models" aria-label="Rescan models">&#x21BB;</button>
+          </div>
+          <div class="stat"><span>PROVIDER</span><b id="stat-provider">—</b></div>
+        </div>
+
+        <div class="panel-card">
+          <div class="panel-label">SYSTEM</div>
+          <div class="stat"><span>STATUS</span><b id="stat-status">ONLINE</b></div>
+          <div class="stat"><span>BRAIN</span><b id="stat-brain">—</b></div>
+          <div class="stat"><span>MODEL</span><b id="stat-model">—</b></div>
+        </div>
+        <div class="panel-card">
+          <div class="panel-label">CHRONOMETER</div>
+          <div class="clock" id="clock">--:--:--</div>
+          <div class="clock-date" id="clock-date">—</div>
+        </div>
+        <div class="panel-card grow">
+          <div class="panel-label">DIAGNOSTICS</div>
+          <div class="bar"><span>CPU</span><i><b id="bar-cpu"></b></i></div>
+          <div class="bar"><span>MEM</span><i><b id="bar-mem"></b></i></div>
+          <div class="bar"><span>NET</span><i><b id="bar-net"></b></i></div>
+          <div class="bar"><span>PWR</span><i><b id="bar-pwr"></b></i></div>
+        </div>
+      </aside>
+
+      <!-- CENTER: the arc reactor + conversation -->
+      <section class="core">
+        <div class="reactor-wrap">
+          <canvas id="reactor" width="440" height="440"></canvas>
+          <div class="reactor-state" id="reactor-state">STANDBY</div>
+        </div>
+
+        <div class="transcript" id="transcript">
+          <div class="msg msg-jarvis">
+            <div class="msg-who">JARVIS</div>
+            <div class="msg-text">
+              Systems online. Good to see you, sir. How can I help?
+            </div>
+          </div>
+        </div>
+
+        <form class="composer" id="composer">
+          <button
+            type="button"
+            id="mic-btn"
+            class="mic"
+            title="Hold to speak / click to toggle"
+            aria-label="Voice input"
+          >
+            <span class="mic-icon">&#x1F3A4;</span>
+          </button>
+          <input
+            id="input"
+            type="text"
+            autocomplete="off"
+            placeholder="Speak or type a command, sir…"
+          />
+          <button type="submit" id="send-btn" class="send" aria-label="Send">
+            &#x27A4;
+          </button>
+        </form>
+      </section>
+
+      <!-- RIGHT: audio visualizer + toggles -->
+      <aside class="panel panel-right">
+        <div class="panel-card">
+          <div class="panel-label">VOICE OUTPUT</div>
+          <label class="toggle">
+            <input type="checkbox" id="tts-toggle" checked />
+            <span>Speak replies</span>
+          </label>
+          <label class="toggle">
+            <input type="checkbox" id="autolisten-toggle" />
+            <span>Auto-listen</span>
+          </label>
+        </div>
+        <div class="panel-card grow">
+          <div class="panel-label">WAVEFORM</div>
+          <canvas id="visualizer" width="220" height="160"></canvas>
+        </div>
+        <div class="panel-card">
+          <div class="panel-label">QUICK COMMANDS</div>
+          <div class="chips">
+            <button class="chip" data-say="What time is it?">Time</button>
+            <button class="chip" data-say="What's today's date?">Date</button>
+            <button class="chip" data-say="Open YouTube">YouTube</button>
+            <button class="chip" data-say="Open calculator">Calc</button>
+          </div>
+        </div>
+      </aside>
+    </main>
+
+    <script src="reactor.js"></script>
+    <script src="renderer.js"></script>
+  </body>
+</html>
