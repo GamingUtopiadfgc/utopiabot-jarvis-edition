@@ -60,7 +60,8 @@
       {
         "provider": "github",
         "owner": "GamingUtopiadfgc",
-        "repo": "utopiabot-jarvis-edition"
+        "repo": "utopiabot-jarvis-edition",
+        "releaseType": "release"
       }
     ],
     "nsis": {
