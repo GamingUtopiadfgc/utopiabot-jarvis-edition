@@ -36,6 +36,17 @@ text chat, a real Claude AI brain, and a handful of local commands.
   your reactor.js?" or "how does your command parser work?" and JARVIS reads the
   real file before answering. `.env`, `.git`, and `node_modules` are blocked, so
   it can't leak your API key or wander outside the project.
+- **Long-term memory** (Settings → Memory Bank → *Enable Long-Term Memory*) — a
+  `remember` tool lets JARVIS save facts ("remember I prefer TypeScript") to disk
+  and recall them in future sessions. Optionally save full conversation
+  transcripts. Stored in the configured memory folder (default
+  `%APPDATA%\UtopiaBot JARVIS\memory`).
+- **Automation** (Settings → Automation → *Enable PowerShell Access*) — a
+  `run_powershell` tool lets JARVIS actually do things on your PC (open apps,
+  manage files, query the system). **Off by default.** Every command is shown to
+  you for **Allow/Deny approval** first (per the Security Level: *Strict* always
+  asks, *Normal* asks when "Require Approval" is on, *Developer* runs without
+  prompting). 30-second timeout; output capped and returned to the model.
 - **Local commands** — time, date, open websites/apps, web search — handled
   instantly without calling the model.
 - **Frameless custom window** — draggable Stark-style title bar.

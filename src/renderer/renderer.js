@@ -207,14 +207,105 @@ window.jarvis.onSettingsChanged((s) => {
   }
 });
 
-// React to the auto-started Ollama server: refresh models when it's ready.
-window.jarvis.onOllamaStatus(({ state }) => {
-  if (state === 'starting') {
-    $('stat-provider').textContent = 'STARTING OLLAMA…';
-  } else if (state === 'ready') {
-    populateModels();
+  // React to the auto-started Ollama server: refresh models when it's ready.
+  window.jarvis.onOllamaStatus(({ state }) => {
+    if (state === 'starting') {
+      $('stat-provider').textContent = 'STARTING OLLAMA…';
+    } else if (state === 'ready') {
+      populateModels();
+    }
+  });
+
+  // Listen for pull progress from main process (for auto-pull during chat)
+  let currentPullModel = null;
+  window.jarvis.onPullProgress?.(({ model, status }) => {
+    if (currentPullModel && model === currentPullModel) {
+      setReactor('thinking', status);
+    }
+  });
+
+  // Append a clickable action chip to a JARVIS message body.
+  function addChip(bodyEl, label, onClick) {
+    const btn = document.createElement('button');
+    btn.className = 'chip';
+    btn.textContent = label;
+    btn.style.marginTop = '8px';
+    btn.style.marginRight = '6px';
+    btn.onclick = () => onClick(btn);
+    bodyEl.appendChild(document.createElement('br'));
+    bodyEl.appendChild(btn);
+    transcript.scrollTop = transcript.scrollHeight;
+    return btn;
   }
-});
+
+  // Point Ollama at a chosen models folder, then refresh the dropdown.
+  async function useModelsFolder(dir, statusEl) {
+    if (statusEl) statusEl.textContent = `Pointing Ollama at ${dir} and restarting it…`;
+    const res = await window.jarvis.applyOllamaModelsPath(dir);
+    await populateModels();
+    if (statusEl) {
+      const n = res?.models?.length || 0;
+      statusEl.textContent = res?.ok && n
+        ? `Found ${n} model${n === 1 ? '' : 's'}. You're all set, sir.`
+        : `I set the folder, but still couldn't see any models there. Double-check the path, sir.`;
+    }
+  }
+
+  // Ollama is up but reports zero models — likely the wrong models folder.
+  window.jarvis.onOllamaNoModels?.(({ stores }) => {
+    const body = addMessage(
+      'JARVIS',
+      "Ollama is running, sir, but it isn't finding any models — it's probably looking in the wrong folder. " +
+        (stores?.length
+          ? 'I found these model folders on your drives:'
+          : "Point me at the folder where your models live and I'll sort it out.")
+    );
+    for (const s of stores || []) {
+      addChip(body, `Use ${s.path} (${s.modelCount} models)`, () =>
+        useModelsFolder(s.path, body)
+      );
+    }
+    addChip(body, 'Choose folder…', async () => {
+      const dir = await window.jarvis.pickFolder();
+      if (dir) useModelsFolder(dir, body);
+    });
+  });
+
+  // Ollama isn't installed — walk the user through getting it.
+  window.jarvis.onOllamaNotInstalled?.(() => {
+    const body = addMessage(
+      'JARVIS',
+      "I can't find Ollama on this system, sir. Do you have it installed?"
+    );
+    addChip(body, "Yes, it's installed", () => {
+      addMessage(
+        'JARVIS',
+        'Then it may be running on a different address. Check the Ollama URL in Settings → Advanced, then hit the rescan button.'
+      );
+    });
+    addChip(body, 'No', () => {
+      const ask = addMessage(
+        'JARVIS',
+        'Would you like me to install Ollama for you? I can handle it automatically.'
+      );
+      addChip(ask, 'Yes, install it', (btn) => {
+        btn.disabled = true;
+        const log = addMessage('JARVIS', 'Installing Ollama, sir…');
+        window.jarvis.onInstallProgress?.(({ status }) => {
+          if (status) log.textContent = status;
+        });
+        window.jarvis.installOllama().then((res) => {
+          if (res?.ok) populateModels();
+        });
+      });
+      addChip(ask, 'No thanks', () => {
+        addMessage(
+          'JARVIS',
+          "No problem — you can grab it from https://ollama.com/download whenever you're ready, then hit rescan."
+        );
+      });
+    });
+  });
 
 // Auto-update notifications.
 window.jarvis.onUpdateStatus(({ state, version, message }) => {
@@ -311,6 +402,43 @@ function parseCommand(raw) {
 }
 
 // ===================================================================
+// Patch notes — shown on request ("what's new").
+// ===================================================================
+const PATCH_NOTES = [
+  "Here's what's new, sir:",
+  '',
+  '• Ollama model finder — if I start up and Ollama reports no models, I now scan your drives and offer the right folder in one click.',
+  "• Guided install — if Ollama isn't on the system, I can install it for you and explain each step.",
+  '• Settings → Advanced — a new "Search" button locates your Ollama models folder automatically, and changing it restarts Ollama so it takes effect right away.',
+].join('\n');
+
+function showPatchNotes() {
+  const el = addMessage('JARVIS', PATCH_NOTES);
+  el.style.whiteSpace = 'pre-wrap'; // keep the bullet list on separate lines
+  speak("Here are the latest patch notes, sir.");
+}
+
+// "What's new?" → offer the notes. A direct "patch notes" request shows them.
+// Returns true if the utterance was handled here.
+function maybeWhatsNew(text) {
+  const t = text.toLowerCase();
+  if (/\b(patch notes|change ?log|release notes)\b/.test(t)) {
+    showPatchNotes();
+    return true;
+  }
+  if (/\b(what(?:'s|s| is)?(?: the)? new(?: update)?|anything new|new update|what(?:'s|s| is)? changed)\b/.test(t)) {
+    const body = addMessage(
+      'JARVIS',
+      "There have been a few updates, sir. Would you like to see the patch notes?"
+    );
+    addChip(body, 'Show patch notes', () => showPatchNotes());
+    addChip(body, 'Not now', () => addMessage('JARVIS', 'Very good, sir.'));
+    return true;
+  }
+  return false;
+}
+
+// ===================================================================
 // Main: handle a user utterance
 // ===================================================================
 async function handleUtterance(text) {
@@ -318,6 +446,11 @@ async function handleUtterance(text) {
   if (!text || busy) return;
   addMessage('YOU', text);
   input.value = '';
+
+  if (maybeWhatsNew(text)) {
+    setReactor('standby');
+    return;
+  }
 
   const cmd = parseCommand(text);
   if (cmd) {
@@ -359,9 +492,13 @@ function askBrain(text) {
     const requestId = 'r' + Date.now() + Math.random().toString(36).slice(2);
     const unsubscribe = window.jarvis.onChatStream(requestId, (chunk) => {
       if (chunk.type === 'tool') {
-        const label =
-          chunk.name === 'read_file' ? 'READING FILE' : 'SCANNING FILES';
-        setReactor('thinking', label);
+        const labels = {
+          read_file: 'READING FILE',
+          list_files: 'SCANNING FILES',
+          run_powershell: 'RUNNING COMMAND',
+          remember: 'SAVING MEMORY',
+        };
+        setReactor('thinking', labels[chunk.name] || 'WORKING');
       } else if (chunk.type === 'reset') {
         // A model wrote a tool call as text; clear it before the real answer.
         full = '';

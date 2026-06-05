@@ -2,7 +2,7 @@
 
 const Anthropic = require('@anthropic-ai/sdk');
 const { SYSTEM_PROMPT } = require('./persona');
-const { runTool, toClaudeTools } = require('./files');
+const { specs, toClaude, run } = require('./tools');
 
 const DEFAULT_MODEL = process.env.JARVIS_MODEL || 'claude-opus-4-8';
 const MAX_TOOL_STEPS = 6;
@@ -29,7 +29,7 @@ function createBrain() {
      * @param {Array<{role: 'user'|'assistant', content: any}>} messages
      * @param {{model?: string, onText: (t: string) => void, onDone: (full: string) => void, onError: (m: string) => void, onTool?: (name: string) => void}} cbs
      */
-    async streamReply(messages, { model, options = {}, onText, onDone, onError, onTool }) {
+    async streamReply(messages, { model, options = {}, toolCtx = {}, onText, onDone, onError, onTool }) {
       if (!client) {
         onError(
           'My brain is offline, sir — no API key configured. Add ANTHROPIC_API_KEY to a .env file and restart.'
@@ -37,11 +37,15 @@ function createBrain() {
         return;
       }
 
-      // Custom system prompt overrides the built-in persona when provided.
-      const systemText = options.systemPrompt?.trim()
+      // Custom system prompt overrides the built-in persona when provided;
+      // long-term memory context is appended when available.
+      let systemText = options.systemPrompt?.trim()
         ? options.systemPrompt
         : SYSTEM_PROMPT;
+      if (options.memoryContext)
+        systemText += `\n\nThings you remember about the user:\n${options.memoryContext}`;
       const maxTokens = Number(options.maxTokens) > 0 ? Number(options.maxTokens) : 4096;
+      const toolList = toClaude(specs(toolCtx.caps || {}));
       // Note: temperature/context length aren't sent — Opus 4.8 rejects
       // temperature, and context length isn't a Messages API parameter.
 
@@ -61,7 +65,7 @@ function createBrain() {
                 cache_control: { type: 'ephemeral' },
               },
             ],
-            tools: toClaudeTools(),
+            tools: toolList,
             messages: working,
           });
 
@@ -74,7 +78,7 @@ function createBrain() {
             for (const block of final.content) {
               if (block.type === 'tool_use') {
                 onTool?.(block.name);
-                const out = await runTool(block.name, block.input);
+                const out = await run(block.name, block.input, toolCtx);
                 results.push({
                   type: 'tool_result',
                   tool_use_id: block.id,

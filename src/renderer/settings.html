@@ -83,7 +83,18 @@
           </div>
           <div class="field">
             <label>Model</label>
-            <select id="n-model" class="sel"></select>
+            <div class="row">
+              <select id="n-model" class="sel"></select>
+              <button id="n-refresh" class="btn-mini" title="Rescan models">⟳</button>
+            </div>
+          </div>
+          <div class="field" id="n-pull-field" style="display:none">
+            <label>Pull Model</label>
+            <div class="row">
+              <input type="text" id="n-pull-input" class="txt" placeholder="e.g. llama3.2:3b" />
+              <button id="n-pull-btn" class="btn-mini">Pull</button>
+            </div>
+            <div id="n-pull-progress" class="pull-progress" style="display:none"></div>
           </div>
           <div class="field">
             <label>Temperature <b id="n-temp-val">0.7</b> <i class="soon">(Ollama only)</i></label>
@@ -190,6 +201,15 @@
             <input type="text" id="x-ollamaUrl" class="txt" />
           </div>
           <label class="chk"><input type="checkbox" id="x-memoryApi" /><span>Memory API Enabled</span></label>
+          <div class="field">
+            <label>Ollama Models Folder <i class="soon">(sets OLLAMA_MODELS env var)</i></label>
+            <div class="row">
+              <input type="text" id="x-ollamaModelsPath" class="txt" placeholder="E:\Ollama\models" />
+              <button id="x-ollamaModelsPath-scan" class="btn-mini">Search</button>
+              <button id="x-ollamaModelsPath-pick" class="btn-mini">Browse</button>
+            </div>
+            <div id="x-ollamaModelsPath-status" class="soon" style="margin-top:6px"></div>
+          </div>
         </section>
       </main>
     </div>

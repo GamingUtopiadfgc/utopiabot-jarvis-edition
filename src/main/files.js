@@ -115,9 +115,8 @@ const TOOLS = [
  * Returns { name, input } or null. Conservative — only fires on a JSON object
  * whose name matches a real tool.
  */
-function parseToolCall(text) {
+function parseToolCall(text, names = TOOLS.map((t) => t.name)) {
   if (!text) return null;
-  const names = TOOLS.map((t) => t.name);
   const candidates = [];
 
   const fence = /```(?:json)?\s*([\s\S]*?)```/gi;
@@ -163,21 +162,4 @@ function parseToolCall(text) {
   return null;
 }
 
-const toClaudeTools = () =>
-  TOOLS.map((t) => ({
-    name: t.name,
-    description: t.description,
-    input_schema: t.parameters,
-  }));
-
-const toOllamaTools = () =>
-  TOOLS.map((t) => ({
-    type: 'function',
-    function: {
-      name: t.name,
-      description: t.description,
-      parameters: t.parameters,
-    },
-  }));
-
-module.exports = { runTool, toClaudeTools, toOllamaTools, parseToolCall };
+module.exports = { runFileTool: runTool, FILE_TOOLS: TOOLS, parseToolCall };

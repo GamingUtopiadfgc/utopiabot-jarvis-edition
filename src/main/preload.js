@@ -35,6 +35,26 @@ contextBridge.exposeInMainWorld('jarvis', {
     return () => ipcRenderer.removeListener('chat:stream', listener);
   },
 
+  // Ollama model pulling
+  pullModel: (model) => ipcRenderer.invoke('ollama:pull', { model }),
+
+  onPullProgress: (cb) =>
+    ipcRenderer.on('ollama:pull-progress', (_e, payload) => cb(payload)),
+
+  // Ollama models-folder discovery + setup
+  scanOllamaModels: () => ipcRenderer.invoke('ollama:scan-models'),
+  applyOllamaModelsPath: (path) =>
+    ipcRenderer.invoke('ollama:apply-models-path', { path }),
+  onOllamaNoModels: (cb) =>
+    ipcRenderer.on('ollama:no-models', (_e, payload) => cb(payload)),
+
+  // Ollama install (when it isn't on the system yet)
+  onOllamaNotInstalled: (cb) =>
+    ipcRenderer.on('ollama:not-installed', (_e, payload) => cb(payload)),
+  installOllama: () => ipcRenderer.invoke('ollama:install'),
+  onInstallProgress: (cb) =>
+    ipcRenderer.on('ollama:install-progress', (_e, payload) => cb(payload)),
+
   // Local commands
   runCommand: (name, args) =>
     ipcRenderer.invoke('command:run', { name, args }),

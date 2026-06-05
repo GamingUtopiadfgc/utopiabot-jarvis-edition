@@ -57,6 +57,7 @@ const DEFAULTS = {
     apiServer: false, // future
     apiPort: 8000,
     ollamaUrl: 'http://127.0.0.1:11434',
+    ollamaModelsPath: '', // custom Ollama models folder (uses OLLAMA_MODELS env var)
     memoryApi: true,
   },
 };

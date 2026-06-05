@@ -1,7 +1,7 @@
 'use strict';
 
 const { SYSTEM_PROMPT } = require('./persona');
-const { runTool, toOllamaTools, parseToolCall } = require('./files');
+const { specs, toOllama, run, parseToolCall } = require('./tools');
 
 const MAX_TOOL_STEPS = 6;
 
@@ -72,6 +72,67 @@ function createOllamaBrain(getHost) {
     },
 
     /**
+     * Pull an Ollama model by name. Emits progress via an optional callback.
+     * Uses Ollama's streaming pull API so we can report download status.
+     * @param {string} modelName e.g. "llama3.2:3b"
+     * @param {(status: string) => void} [onProgress] called with progress text
+     * @returns {Promise<{ok: boolean, error?: string}>}
+     */
+    async pullModel(modelName, onProgress) {
+      const HOST = host();
+      const report = (msg) => { try { onProgress?.(msg); } catch { /* ignore */ } };
+      report(`Pulling ${modelName}…`);
+
+      try {
+        const res = await fetch(`${HOST}/api/pull`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: modelName, stream: true }),
+        });
+
+        if (!res.ok) {
+          const detail = await res.text().catch(() => '');
+          return { ok: false, error: friendlyOllamaError(detail) || `Pull failed (${res.status}): ${detail}` };
+        }
+
+        // Read the streaming NDJSON response to show progress.
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let lastStatus = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || ''; // keep partial line for next chunk
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const chunk = JSON.parse(line);
+              if (chunk.status && chunk.status !== lastStatus) {
+                lastStatus = chunk.status;
+                report(`${modelName}: ${chunk.status}`);
+                if (chunk.total && chunk.completed) {
+                  const pct = Math.round((chunk.completed / chunk.total) * 100);
+                  report(`${modelName}: ${chunk.status} — ${pct}%`);
+                }
+              }
+              if (chunk.error) {
+                return { ok: false, error: friendlyOllamaError(chunk.error) || chunk.error };
+              }
+            } catch { /* skip malformed lines */ }
+          }
+        }
+        report(`✓ ${modelName} ready`);
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: `Pull request failed: ${err.message || String(err)}` };
+      }
+    },
+
+    /**
      * Get a reply from an Ollama model, running file-access tools as needed.
      * Uses non-streaming turns so tool calls (structured OR text-emitted) are
      * detected reliably and never flash in the UI. The final answer is emitted
@@ -79,15 +140,18 @@ function createOllamaBrain(getHost) {
      * @param {Array<{role:'user'|'assistant', content:string}>} messages
      * @param {{model: string, onText:(t:string)=>void, onDone:(full:string)=>void, onError:(m:string)=>void, onTool?:(name:string)=>void}} cbs
      */
-    async streamReply(messages, { model, options = {}, onText, onDone, onError, onTool }) {
+    async streamReply(messages, { model, options = {}, toolCtx = {}, onText, onDone, onError, onTool }) {
       if (!model) {
         onError('No Ollama model selected, sir.');
         return;
       }
 
-      const systemText = options.systemPrompt?.trim()
+      let systemText = options.systemPrompt?.trim()
         ? options.systemPrompt
         : SYSTEM_PROMPT;
+      if (options.memoryContext)
+        systemText += `\n\nThings you remember about the user:\n${options.memoryContext}`;
+      const toolSpecs = toOllama(specs(toolCtx.caps || {}));
       // Map UI fields to Ollama's generation options.
       const genOptions = {};
       if (Number.isFinite(options.temperature)) genOptions.temperature = options.temperature;
@@ -108,7 +172,7 @@ function createOllamaBrain(getHost) {
               stream: false,
               messages: working,
               ...(Object.keys(genOptions).length ? { options: genOptions } : {}),
-              ...(useTools ? { tools: toOllamaTools() } : {}),
+              ...(useTools && toolSpecs.length ? { tools: toolSpecs } : {}),
             }),
           });
 
@@ -157,7 +221,7 @@ function createOllamaBrain(getHost) {
               onTool?.(c.name);
               const input =
                 typeof c.input === 'string' ? safeJson(c.input) : c.input;
-              const out = await runTool(c.name, input || {});
+              const out = await run(c.name, input || {}, toolCtx);
               working.push({ role: 'tool', name: c.name, content: out });
             }
             continue; // feed results back to the model

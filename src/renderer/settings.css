@@ -293,3 +293,16 @@ input[type='range'] {
   background: rgba(56, 225, 255, 0.3);
   box-shadow: 0 0 14px var(--cyan-glow);
 }
+
+/* Pull progress */
+.pull-progress {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: rgba(56, 225, 255, 0.08);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  font-size: 11px;
+  color: var(--cyan);
+  white-space: pre-wrap;
+  font-family: var(--font);
+}

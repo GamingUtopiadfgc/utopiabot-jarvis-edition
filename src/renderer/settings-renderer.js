@@ -128,6 +128,7 @@ function populate(s) {
   $('n-maxTokens').value = s.neural.maxTokens;
   $('n-systemPrompt').value = s.neural.systemPrompt;
   loadModels(s.neural.provider);
+  togglePullField(s.neural.provider);
 
   // Memory
   $('m-longTerm').checked = s.memory.longTerm;
@@ -160,6 +161,7 @@ function populate(s) {
   $('x-apiServer').checked = s.advanced.apiServer;
   $('x-apiPort').value = s.advanced.apiPort;
   $('x-ollamaUrl').value = s.advanced.ollamaUrl;
+  $('x-ollamaModelsPath').value = s.advanced.ollamaModelsPath;
   $('x-memoryApi').checked = s.advanced.memoryApi;
 }
 
@@ -218,6 +220,7 @@ function collect() {
       apiServer: $('x-apiServer').checked,
       apiPort: parseInt($('x-apiPort').value, 10) || 8000,
       ollamaUrl: $('x-ollamaUrl').value.trim() || 'http://127.0.0.1:11434',
+      ollamaModelsPath: $('x-ollamaModelsPath').value.trim(),
       memoryApi: $('x-memoryApi').checked,
     },
   };
@@ -230,16 +233,34 @@ $('n-temperature').addEventListener('input', (e) => {
 $('ap-fontScale').addEventListener('input', (e) => {
   $('ap-scale-val').textContent = Math.round(e.target.value * 100) + '%';
 });
-$('n-provider').addEventListener('change', (e) => {
-  $('n-model').dataset.value = '';
-  loadModels(e.target.value);
-});
 document.querySelectorAll('#ap-theme input').forEach((r) =>
   r.addEventListener('change', (e) => applyTheme(e.target.value))
 );
 $('m-folder-pick').addEventListener('click', async () => {
   const dir = await window.jarvis.pickFolder();
   if (dir) $('m-folder').value = dir;
+});
+$('x-ollamaModelsPath-pick').addEventListener('click', async () => {
+  const dir = await window.jarvis.pickFolder();
+  if (dir) $('x-ollamaModelsPath').value = dir;
+});
+$('x-ollamaModelsPath-scan').addEventListener('click', async () => {
+  const status = $('x-ollamaModelsPath-status');
+  status.textContent = 'Searching your drives for Ollama models…';
+  try {
+    const { stores } = await window.jarvis.scanOllamaModels();
+    if (stores && stores.length) {
+      const top = stores[0];
+      $('x-ollamaModelsPath').value = top.path;
+      status.textContent =
+        `Found ${top.modelCount} model${top.modelCount === 1 ? '' : 's'} at ${top.path}. Save to apply.`;
+    } else {
+      status.textContent =
+        'No Ollama model folders found — use Browse to set it manually.';
+    }
+  } catch {
+    status.textContent = 'Search failed. Use Browse to set the folder manually.';
+  }
 });
 
 // ---- System tab live stats ----
@@ -273,6 +294,64 @@ function stopSystemPolling() {
     systemTimer = null;
   }
 }
+
+// ---- Pull model (Ollama only) ----
+let isPulling = false;
+
+function togglePullField(provider) {
+  const field = $('n-pull-field');
+  field.style.display = provider === 'ollama' ? '' : 'none';
+}
+
+$('n-provider').addEventListener('change', (e) => {
+  $('n-model').dataset.value = '';
+  loadModels(e.target.value);
+  togglePullField(e.target.value);
+});
+
+$('n-refresh').addEventListener('click', () => {
+  if (appSettings) {
+    loadModels(appSettings.neural.provider);
+  }
+});
+
+$('n-pull-btn').addEventListener('click', async () => {
+  if (isPulling) return;
+  const model = $('n-pull-input').value.trim();
+  if (!model) {
+    $('n-pull-progress').textContent = 'Enter a model name first, sir.';
+    $('n-pull-progress').style.display = '';
+    return;
+  }
+
+  isPulling = true;
+  $('n-pull-btn').textContent = 'Pulling…';
+  $('n-pull-btn').disabled = true;
+  $('n-pull-progress').style.display = '';
+  $('n-pull-progress').textContent = `Pulling ${model}…`;
+
+  await window.jarvis.pullModel(model);
+
+  // Progress updates come over IPC now
+});
+
+// Listen for pull progress from the main process
+window.jarvis.onPullProgress?.(({ model, status }) => {
+  $('n-pull-progress').textContent = status;
+  $('n-pull-progress').style.display = '';
+
+  // If status indicates completion or error, re-enable the button
+  if (/✓ .+ ready/.test(status) || /error|failed|not found/i.test(status)) {
+    isPulling = false;
+    $('n-pull-btn').textContent = 'Pull';
+    $('n-pull-btn').disabled = false;
+    // Refresh models on success
+    if (/✓ .+ ready/.test(status)) {
+      loadModels('ollama');
+      $('n-pull-input').value = '';
+    }
+  }
+});
 
 // ---- Buttons ----
 $('s-save').addEventListener('click', async () => {
