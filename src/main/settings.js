@@ -14,14 +14,16 @@ const DEFAULTS = {
     launchOllama: true,
   },
   voice: {
-    engine: 'windows', // 'windows' | 'piper' (piper not yet implemented)
+    engine: 'windows', // 'windows' | 'piper' | 'coqui'
     wakeWord: 'Hey Utopia',
     enableWakeWord: false,
     autoListen: false,
     speakResponses: true,
     startupGreeting: true,
-    voiceURI: '', // chosen SpeechSynthesis voice
+    voiceURI: '', // chosen SpeechSynthesis voice (windows engine)
     micId: '', // chosen microphone deviceId
+    piperVoice: '', // chosen Piper voice id (blank = first installed)
+    coquiModel: '', // chosen Coqui model name (blank = default)
   },
   neural: {
     provider: 'ollama', // 'ollama' | 'claude'

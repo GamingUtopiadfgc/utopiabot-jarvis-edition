@@ -66,6 +66,89 @@ async function loadMics() {
   if (current) sel.value = current;
 }
 
+// ---- Neural TTS (Piper / Coqui) ----
+let ttsState = { piper: { installed: false, voices: [] }, coqui: { installed: false, models: [] } };
+
+// Show only the picker panel for the selected engine.
+function showEnginePanel(engine) {
+  document.querySelectorAll('.tts-engine').forEach((el) => {
+    el.style.display = el.dataset.engine === engine ? '' : 'none';
+  });
+}
+
+function fillSelect(sel, items, current, emptyLabel) {
+  sel.innerHTML = '';
+  if (!items.length) {
+    const o = document.createElement('option');
+    o.value = '';
+    o.textContent = emptyLabel;
+    o.disabled = true;
+    sel.appendChild(o);
+    return;
+  }
+  for (const id of items) {
+    const o = document.createElement('option');
+    o.value = id;
+    o.textContent = id;
+    sel.appendChild(o);
+  }
+  if (current && items.includes(current)) sel.value = current;
+}
+
+async function loadTtsState() {
+  try {
+    ttsState = await window.jarvis.ttsState();
+  } catch {
+    /* keep defaults */
+  }
+  fillSelect($('v-piperVoice'), ttsState.piper.voices, $('v-piperVoice').dataset.value,
+    'Not installed — click Install');
+  fillSelect($('v-coquiModel'), ttsState.coqui.models, $('v-coquiModel').dataset.value || '',
+    'Not installed — click Install');
+  $('v-piper-status').textContent = ttsState.piper.installed ? 'Installed.' : 'Not installed.';
+  $('v-coqui-status').textContent = ttsState.coqui.installed ? 'Installed.' : 'Not installed.';
+}
+
+// Wire an engine's Install + Test buttons. Args are element ids.
+function wireTtsEngine(engine, installId, testId, statusId, selectId) {
+  $(installId).addEventListener('click', async () => {
+    $(installId).disabled = true;
+    $(statusId).textContent = 'Starting install…';
+    const res = await window.jarvis.installTts(engine);
+    $(installId).disabled = false;
+    if (res?.ok) {
+      $(statusId).textContent = 'Installed. Ready to use.';
+      loadTtsState();
+    } else {
+      $(statusId).textContent = res?.error || 'Install failed.';
+    }
+  });
+  $(testId).addEventListener('click', async () => {
+    $(statusId).textContent = 'Synthesizing test…';
+    const res = await window.jarvis.ttsSynth(engine, 'All systems online, sir.', $(selectId).value);
+    if (res?.ok && res.dataUrl) {
+      new Audio(res.dataUrl).play().catch(() => {});
+      $(statusId).textContent = 'Playing test.';
+    } else {
+      $(statusId).textContent = res?.error || 'Test failed — is it installed?';
+    }
+  });
+}
+
+// Live install progress from the main process.
+window.jarvis.onTtsInstallProgress?.(({ engine, status }) => {
+  const el = $(engine === 'coqui' ? 'v-coqui-status' : 'v-piper-status');
+  if (el && status) el.textContent = status;
+});
+
+wireTtsEngine('piper', 'v-piper-install', 'v-piper-test', 'v-piper-status', 'v-piperVoice');
+wireTtsEngine('coqui', 'v-coqui-install', 'v-coqui-test', 'v-coqui-status', 'v-coquiModel');
+
+// Swap the visible picker panel when the engine changes.
+document.querySelectorAll('#v-engine input').forEach((r) =>
+  r.addEventListener('change', (e) => showEnginePanel(e.target.value))
+);
+
 async function loadModels(provider) {
   const sel = $('n-model');
   const current = sel.dataset.value || '';
@@ -116,8 +199,12 @@ function populate(s) {
   $('v-startupGreeting').checked = s.voice.startupGreeting;
   $('v-voiceURI').dataset.value = s.voice.voiceURI;
   $('v-micId').dataset.value = s.voice.micId;
+  $('v-piperVoice').dataset.value = s.voice.piperVoice || '';
+  $('v-coquiModel').dataset.value = s.voice.coquiModel || '';
   loadVoices();
   loadMics();
+  loadTtsState();
+  showEnginePanel(s.voice.engine);
 
   // Neural
   $('n-provider').value = s.neural.provider;
@@ -185,6 +272,8 @@ function collect() {
       startupGreeting: $('v-startupGreeting').checked,
       voiceURI: $('v-voiceURI').value,
       micId: $('v-micId').value,
+      piperVoice: $('v-piperVoice').value,
+      coquiModel: $('v-coquiModel').value,
     },
     neural: {
       provider: $('n-provider').value,
@@ -244,6 +333,33 @@ $('x-ollamaModelsPath-pick').addEventListener('click', async () => {
   const dir = await window.jarvis.pickFolder();
   if (dir) $('x-ollamaModelsPath').value = dir;
 });
+// ---- Check for Updates ----
+$('x-check-updates').addEventListener('click', async () => {
+  const status = $('x-update-status');
+  $('x-check-updates').disabled = true;
+  status.textContent = 'Checking for updates…';
+  const res = await window.jarvis.checkUpdates();
+  $('x-check-updates').disabled = false;
+  // Packaged builds emit detailed state via onUpdateStatus below; in dev we
+  // get an immediate answer here.
+  if (res?.dev) status.textContent = 'Updates only apply to the installed app.';
+});
+
+// React to update lifecycle events (broadcast from the main process).
+window.jarvis.onUpdateStatus(({ state, version, message }) => {
+  const status = $('x-update-status');
+  if (!status) return;
+  const msg = {
+    checking: 'Checking for updates…',
+    none: "You're on the latest version, sir.",
+    available: `Update v${version} found — downloading…`,
+    downloaded: `Update v${version} ready. Restart to apply.`,
+    error: `Update check failed: ${message || 'unknown error'}`,
+    dev: 'Updates only apply to the installed app.',
+  }[state];
+  if (msg) status.textContent = msg;
+});
+
 $('x-ollamaModelsPath-scan').addEventListener('click', async () => {
   const status = $('x-ollamaModelsPath-status');
   status.textContent = 'Searching your drives for Ollama models…';

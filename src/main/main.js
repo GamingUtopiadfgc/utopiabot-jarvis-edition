@@ -39,11 +39,12 @@ const {
   findOllamaModelStores,
   restartOllamaServer,
 } = require('./ollama-server');
-const { initAutoUpdates } = require('./updater');
+const { initAutoUpdates, checkForUpdates } = require('./updater');
 const { runCommand } = require('./commands');
 const settingsStore = require('./settings');
 const { getStats } = require('./system');
 const { createMemory } = require('./memory');
+const tts = require('./tts');
 
 const isDev = process.argv.includes('--dev');
 
@@ -448,6 +449,45 @@ ipcMain.handle('command:run', async (_event, { name, args }) => {
   return runCommand(name, args);
 });
 
+// ---- IPC: neural TTS engines (Piper / Coqui) ----
+ipcMain.handle('tts:state', () => tts.getTtsState());
+
+ipcMain.handle('tts:install', async (_event, { engine }) => {
+  // Broadcast progress to every open window (install is driven from Settings).
+  const report = (status) => {
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (!w.isDestroyed()) w.webContents.send('tts:install-progress', { engine, status });
+    }
+  };
+  try {
+    return await tts.install(engine, report);
+  } catch (err) {
+    return { ok: false, error: err.message || String(err) };
+  }
+});
+
+ipcMain.handle('tts:synth', (_event, { engine, text, voice }) =>
+  tts.synth(engine, { text, voice })
+);
+
+// ---- IPC: manual "Check for Updates" (Settings → Advanced) ----
+ipcMain.handle('update:check', async () => {
+  // Updates only apply to the installed (packaged) app; electron-updater
+  // errors in dev. Report that plainly instead of throwing.
+  if (!app.isPackaged) {
+    mainWindow?.webContents.send('update:status', { state: 'dev' });
+    return { ok: false, dev: true };
+  }
+  try {
+    await checkForUpdates();
+    return { ok: true };
+  } catch (err) {
+    const message = err?.message || String(err);
+    mainWindow?.webContents.send('update:status', { state: 'error', message });
+    return { ok: false, error: message };
+  }
+});
+
 // Auto-start the local Ollama server (in a terminal) if it isn't running, then
 // tell the renderer to refresh its model list once it's up.
 // Notify the renderer when the server is up but reports zero models — most
@@ -498,7 +538,7 @@ app.whenReady().then(() => {
   // Auto-updates only make sense for the installed (packaged) app.
   if (app.isPackaged) {
     try {
-      initAutoUpdates(() => mainWindow);
+      initAutoUpdates();
     } catch (err) {
       console.error('Auto-update init failed:', err);
     }

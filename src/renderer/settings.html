@@ -50,8 +50,31 @@
             <label>Voice Engine</label>
             <div class="radios" id="v-engine">
               <label><input type="radio" name="v-engine" value="windows" /><span>Windows TTS</span></label>
-              <label><input type="radio" name="v-engine" value="piper" /><span>Piper <i class="soon">(soon)</i></span></label>
+              <label><input type="radio" name="v-engine" value="piper" /><span>Piper</span></label>
+              <label><input type="radio" name="v-engine" value="coqui" /><span>Coqui</span></label>
             </div>
+          </div>
+
+          <!-- Piper engine: install + voice picker -->
+          <div class="field tts-engine" data-engine="piper">
+            <label>Piper Voice</label>
+            <div class="row">
+              <select id="v-piperVoice" class="sel"></select>
+              <button id="v-piper-install" class="btn-mini">Install</button>
+              <button id="v-piper-test" class="btn-mini">Test</button>
+            </div>
+            <div id="v-piper-status" class="soon" style="margin-top:6px"></div>
+          </div>
+
+          <!-- Coqui engine: install + model picker -->
+          <div class="field tts-engine" data-engine="coqui">
+            <label>Coqui Model <i class="soon">(first run downloads the model)</i></label>
+            <div class="row">
+              <select id="v-coquiModel" class="sel"></select>
+              <button id="v-coqui-install" class="btn-mini">Install</button>
+              <button id="v-coqui-test" class="btn-mini">Test</button>
+            </div>
+            <div id="v-coqui-status" class="soon" style="margin-top:6px"></div>
           </div>
           <div class="field">
             <label>Wake Word</label>
@@ -209,6 +232,13 @@
               <button id="x-ollamaModelsPath-pick" class="btn-mini">Browse</button>
             </div>
             <div id="x-ollamaModelsPath-status" class="soon" style="margin-top:6px"></div>
+          </div>
+          <div class="field">
+            <label>Software Updates</label>
+            <div class="row">
+              <button id="x-check-updates" class="btn-mini">Check for Updates</button>
+            </div>
+            <div id="x-update-status" class="soon" style="margin-top:6px"></div>
           </div>
         </section>
       </main>

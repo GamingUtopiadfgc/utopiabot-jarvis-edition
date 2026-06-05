@@ -570,13 +570,35 @@ function chosenVoice() {
   return voice;
 }
 
+// Audio element for neural (Piper/Coqui) playback; tracked so we can stop it.
+let neuralAudio = null;
+
+// Stop any in-flight speech (browser or neural) — used on barge-in / new turns.
+function cancelSpeech() {
+  try { speechSynthesis.cancel(); } catch { /* ignore */ }
+  if (neuralAudio) {
+    try { neuralAudio.pause(); } catch { /* ignore */ }
+    neuralAudio = null;
+  }
+}
+
 function speak(text, force = false) {
   if ((!force && !ttsToggle.checked) || !text) {
     maybeAutoListen();
     return;
   }
+  const engine = appSettings?.voice.engine || 'windows';
+  if (engine === 'piper' || engine === 'coqui') {
+    speakNeural(engine, text);
+  } else {
+    speakBrowser(text);
+  }
+}
+
+// Built-in browser SpeechSynthesis (Windows TTS) path.
+function speakBrowser(text) {
   try {
-    speechSynthesis.cancel();
+    cancelSpeech();
     const u = new SpeechSynthesisUtterance(text);
     const v = chosenVoice();
     if (v) u.voice = v;
@@ -594,6 +616,39 @@ function speak(text, force = false) {
     speechSynthesis.speak(u);
   } catch {
     maybeAutoListen();
+  }
+}
+
+// Local neural engines: synthesize a WAV in the main process, play it here.
+// Falls back to the browser voice if synthesis fails (e.g. not installed yet).
+async function speakNeural(engine, text) {
+  try {
+    cancelSpeech();
+    const voice =
+      engine === 'piper' ? appSettings?.voice.piperVoice : appSettings?.voice.coquiModel;
+    const res = await window.jarvis.ttsSynth(engine, text, voice || '');
+    if (!res?.ok || !res.dataUrl) throw new Error(res?.error || 'TTS failed');
+
+    const audio = new Audio(res.dataUrl);
+    neuralAudio = audio;
+    audio.onplay = () => {
+      setReactor('speaking', 'SPEAKING');
+      startSpeakingViz();
+    };
+    audio.onended = () => {
+      stopSpeakingViz();
+      if (neuralAudio === audio) neuralAudio = null;
+      if (!busy) setReactor('standby');
+      maybeAutoListen();
+    };
+    audio.onerror = () => {
+      stopSpeakingViz();
+      if (neuralAudio === audio) neuralAudio = null;
+      maybeAutoListen();
+    };
+    await audio.play();
+  } catch {
+    speakBrowser(text); // graceful fallback so the user still hears a reply
   }
 }
 
@@ -658,7 +713,7 @@ function toggleListen() {
     recognition.stop();
   } else {
     try {
-      speechSynthesis.cancel();
+      cancelSpeech();
       recognition.start();
     } catch {
       /* start() throws if already started — ignore */

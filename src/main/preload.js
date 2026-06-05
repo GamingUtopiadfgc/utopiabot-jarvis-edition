@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('jarvis', {
   onUpdateStatus: (cb) =>
     ipcRenderer.on('update:status', (_e, payload) => cb(payload)),
   installUpdate: () => ipcRenderer.invoke('update:install'),
+  checkUpdates: () => ipcRenderer.invoke('update:check'),
 
   // Streaming chat. `onChunk` receives { type, text?, message? } for the
   // matching requestId. Returns an unsubscribe function.
@@ -67,6 +68,14 @@ contextBridge.exposeInMainWorld('jarvis', {
   closeSettings: () => ipcRenderer.invoke('settings:close'),
   onSettingsChanged: (cb) =>
     ipcRenderer.on('settings:changed', (_e, s) => cb(s)),
+
+  // Neural TTS engines (Piper / Coqui)
+  ttsState: () => ipcRenderer.invoke('tts:state'),
+  installTts: (engine) => ipcRenderer.invoke('tts:install', { engine }),
+  onTtsInstallProgress: (cb) =>
+    ipcRenderer.on('tts:install-progress', (_e, payload) => cb(payload)),
+  ttsSynth: (engine, text, voice) =>
+    ipcRenderer.invoke('tts:synth', { engine, text, voice }),
 
   // System + dialogs
   getSystemStats: () => ipcRenderer.invoke('system:stats'),

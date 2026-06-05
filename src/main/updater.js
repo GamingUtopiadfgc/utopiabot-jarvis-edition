@@ -1,7 +1,7 @@
 'use strict';
 
 const { autoUpdater } = require('electron-updater');
-const { ipcMain } = require('electron');
+const { ipcMain, BrowserWindow } = require('electron');
 
 /**
  * Wire up auto-updates. Checks GitHub Releases (per the `publish` config in
@@ -12,17 +12,24 @@ const { ipcMain } = require('electron');
  * No-ops in dev (the app must be packaged for updates to apply).
  * @param {() => Electron.BrowserWindow | null} getWindow
  */
-function initAutoUpdates(getWindow) {
-  const tell = (payload) => {
-    const win = getWindow();
-    if (win && !win.isDestroyed()) win.webContents.send('update:status', payload);
-  };
+// Broadcast update status to every open window so both the HUD and the
+// Settings window can react (e.g. the "Check for Updates" button).
+function tell(payload) {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send('update:status', payload);
+  }
+}
 
+function initAutoUpdates() {
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
+  autoUpdater.on('checking-for-update', () => tell({ state: 'checking' }));
   autoUpdater.on('update-available', (info) =>
     tell({ state: 'available', version: info.version })
+  );
+  autoUpdater.on('update-not-available', (info) =>
+    tell({ state: 'none', version: info?.version })
   );
   autoUpdater.on('update-downloaded', (info) =>
     tell({ state: 'downloaded', version: info.version })
@@ -42,4 +49,9 @@ function initAutoUpdates(getWindow) {
   );
 }
 
-module.exports = { initAutoUpdates };
+// Trigger a check on demand (from the Settings button). Events drive the UI.
+function checkForUpdates() {
+  return autoUpdater.checkForUpdates();
+}
+
+module.exports = { initAutoUpdates, checkForUpdates };
