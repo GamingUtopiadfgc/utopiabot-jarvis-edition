@@ -70,8 +70,10 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
+      "menuCategory": false,
       "shortcutName": "UtopiaBot JARVIS",
-      "uninstallDisplayName": "UtopiaBot JARVIS"
+      "uninstallDisplayName": "UtopiaBot JARVIS",
+      "deleteAppDataOnUninstall": false
     }
   }
 }
