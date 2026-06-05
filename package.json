@@ -1,6 +1,6 @@
 {
   "name": "utopiabot-jarvis-edition",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "UtopiaBot — a Jarvis-style desktop AI assistant with an arc-reactor HUD, voice, and a Claude brain.",
   "main": "src/main/main.js",
   "type": "commonjs",
