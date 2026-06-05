@@ -10,7 +10,11 @@
     "icon": "node build/make-icon.js",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
-    "release": "electron-builder --publish always"
+    "release": "npm run release:patch",
+    "release:patch": "npm version patch -m \"Release v%s\" && npm run publish",
+    "release:minor": "npm version minor -m \"Release v%s\" && npm run publish",
+    "release:major": "npm version major -m \"Release v%s\" && npm run publish",
+    "publish": "electron-builder --publish always && git push --follow-tags"
   },
   "keywords": [
     "jarvis",
