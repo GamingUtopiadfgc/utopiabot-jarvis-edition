@@ -76,10 +76,13 @@ async function runTool(name, input = {}) {
 
 // ---- Write tool (Nightly / dangerous features only) ----
 
-// Only block the OS kernel — everything else (including game folders) is
-// the user's call via the approval block.
+// Block OS and critical system locations. Everything else (game folders,
+// Program Files, user documents) is the user's call via the approval block.
 const BLOCKED_WRITE_PREFIXES = [
-  'C:\\Windows',
+  'C:\\Windows\\System32',
+  'C:\\Windows\\SysWOW64',
+  'C:\\Windows\\SystemApps',
+  'C:\\Windows\\WinSxS',
 ];
 
 async function writeFile(filePath, content) {
