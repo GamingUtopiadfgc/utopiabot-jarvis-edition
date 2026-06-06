@@ -1,7 +1,7 @@
 'use strict';
 
 const { shell } = require('electron');
-const { exec } = require('child_process');
+const { spawn } = require('child_process');
 
 // Common sites the user can open by name.
 const SITES = {
@@ -17,17 +17,24 @@ const SITES = {
   weather: 'https://www.weather.com',
 };
 
-// Windows apps that can be launched via `start`.
+// Windows apps. Values are either an executable name (launched via
+// "start "" <exe>") or a URI scheme (opened via shell.openExternal).
 const APPS = {
-  notepad: 'notepad',
-  calculator: 'calc',
-  calc: 'calc',
-  paint: 'mspaint',
-  explorer: 'explorer',
-  cmd: 'cmd',
-  terminal: 'wt',
-  settings: 'start ms-settings:',
-  camera: 'start microsoft.windows.camera:',
+  notepad:       { exe: 'notepad' },
+  calculator:    { exe: 'calc' },
+  calc:          { exe: 'calc' },
+  paint:         { exe: 'mspaint' },
+  explorer:      { exe: 'explorer' },
+  cmd:           { exe: 'cmd' },
+  terminal:      { exe: 'wt', fallback: 'cmd' },
+  powershell:    { exe: 'powershell' },
+  taskmgr:       { exe: 'taskmgr' },
+  snipping:      { exe: 'SnippingTool' },
+  wordpad:       { exe: 'wordpad' },
+  regedit:       { exe: 'regedit' },
+  devmgmt:       { exe: 'devmgmt.msc' },
+  settings:      { uri: 'ms-settings:' },
+  camera:        { uri: 'microsoft.windows.camera:' },
 };
 
 function ok(message, data) {
@@ -35,6 +42,21 @@ function ok(message, data) {
 }
 function fail(message) {
   return { ok: false, message };
+}
+
+// Launch an exe via "start "" <exe>" so it detaches from the Electron process.
+function launchExe(exe) {
+  return new Promise((resolve, reject) => {
+    const child = spawn('cmd.exe', ['/c', 'start', '', exe], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: false,
+    });
+    child.unref();
+    child.on('error', reject);
+    // Give it 400ms — if it hasn't crashed by then, consider it launched.
+    setTimeout(resolve, 400);
+  });
 }
 
 /**
@@ -46,19 +68,13 @@ async function runCommand(name, args = {}) {
   switch (name) {
     case 'time': {
       const now = new Date();
-      const time = now.toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-      return ok(`It's ${time}, sir.`, { time });
+      const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return ok(`It's ${time}.`, { time });
     }
 
     case 'date': {
       const date = new Date().toLocaleDateString([], {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
       });
       return ok(`Today is ${date}.`, { date });
     }
@@ -81,19 +97,34 @@ async function runCommand(name, args = {}) {
 
     case 'open-app': {
       const key = String(args.target || '').toLowerCase().trim();
-      const cmd = APPS[key];
-      if (!cmd) return fail(`I don't know how to open "${args.target}".`);
-      // `start "" <cmd>` detaches the launched app from this process on Windows.
-      exec(cmd.startsWith('start') ? cmd : `start "" ${cmd}`);
-      return ok(`Launching ${key}.`);
+      const entry = APPS[key];
+      if (!entry) return fail(`I don't know how to open "${args.target}".`);
+
+      if (entry.uri) {
+        shell.openExternal(entry.uri);
+        return ok(`Opening ${key}.`);
+      }
+
+      try {
+        await launchExe(entry.exe);
+        return ok(`Opening ${key}.`);
+      } catch (primaryErr) {
+        if (entry.fallback) {
+          try {
+            await launchExe(entry.fallback);
+            return ok(`Opening ${entry.fallback} — ${key} doesn't appear to be installed.`);
+          } catch {
+            // fall through to error
+          }
+        }
+        return fail(`Couldn't open ${key}: ${primaryErr.message}`);
+      }
     }
 
     case 'search-web': {
       const q = String(args.query || '').trim();
       if (!q) return fail('Nothing to search for.');
-      shell.openExternal(
-        'https://www.google.com/search?q=' + encodeURIComponent(q)
-      );
+      shell.openExternal('https://www.google.com/search?q=' + encodeURIComponent(q));
       return ok(`Searching for ${q}.`);
     }
 

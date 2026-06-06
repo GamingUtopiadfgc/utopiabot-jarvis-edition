@@ -397,11 +397,42 @@ function parseCommand(raw) {
   if (/\b(what(?:'s| is)? )?(the )?(today'?s? )?date\b/.test(text) || /what day is it/.test(text))
     return { name: 'date' };
 
+  // Websites — match before apps so "open youtube.com" goes to open-url
   let m = text.match(/\bopen (?:the )?(?:website |site )?(youtube|google|github|gmail|maps|twitter|reddit|spotify|netflix|weather)\b/);
   if (m) return { name: 'open-site', args: { target: m[1] } };
 
-  m = text.match(/\bopen (?:the )?(notepad|calculator|calc|paint|explorer|cmd|terminal|settings|camera)\b/);
-  if (m) return { name: 'open-app', args: { target: m[1] } };
+  // Apps — natural language: "open/launch/start/run/pull up <app>"
+  const LAUNCH_VERB = /\b(open|launch|start|run|pull up|bring up|fire up|load|show)\b/;
+  if (LAUNCH_VERB.test(text)) {
+    // Ordered so longer phrases match before their substrings
+    const APP_PHRASES = [
+      ['command prompt', 'cmd'],
+      ['command line',   'cmd'],
+      ['dos prompt',     'cmd'],
+      ['windows terminal','terminal'],
+      ['file explorer',  'explorer'],
+      ['task manager',   'taskmgr'],
+      ['snipping tool',  'snipping'],
+      ['device manager', 'devmgmt'],
+      ['registry editor','regedit'],
+      ['powershell',     'powershell'],
+      ['terminal',       'terminal'],
+      ['notepad',        'notepad'],
+      ['calculator',     'calculator'],
+      ['calc',           'calc'],
+      ['paint',          'paint'],
+      ['explorer',       'explorer'],
+      ['taskmgr',        'taskmgr'],
+      ['wordpad',        'wordpad'],
+      ['regedit',        'regedit'],
+      ['settings',       'settings'],
+      ['camera',         'camera'],
+      ['cmd',            'cmd'],
+    ];
+    for (const [phrase, key] of APP_PHRASES) {
+      if (text.includes(phrase)) return { name: 'open-app', args: { target: key } };
+    }
+  }
 
   m = text.match(/\b(?:google|search(?: for| the web for)?) (.+)/);
   if (m && /\b(search|google)\b/.test(text))
