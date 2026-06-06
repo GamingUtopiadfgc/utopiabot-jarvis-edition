@@ -15,6 +15,7 @@ const autoListenToggle = $('autolisten-toggle');
 // Conversation history sent to the brain each turn (Anthropic message shape).
 const history = [];
 let busy = false;
+let fileEditEnabled = false; // nightly only — toggled by the file-edit panel card
 
 // Live settings cache (from the Settings window).
 let appSettings = null;
@@ -396,6 +397,88 @@ window.jarvis.onCodeApproval(({ jobId, code, language, purpose }) => {
 
   actions.appendChild(runBtn);
   actions.appendChild(denyBtn);
+  actions.appendChild(status);
+  wrap.appendChild(actions);
+
+  transcript.appendChild(wrap);
+  transcript.scrollTop = transcript.scrollHeight;
+});
+
+// File-edit toggle — only shown on Nightly builds.
+if (window.jarvis.dangerousFeatures) {
+  const card   = $('file-edit-card');
+  const toggle = $('file-edit-toggle');
+  if (card) card.style.display = '';
+  if (toggle) {
+    toggle.addEventListener('change', () => {
+      fileEditEnabled = toggle.checked;
+      if (toggle.checked) {
+        addMessage('JARVIS',
+          'File editing enabled. I can now read and write files — every write will need your approval first.');
+      } else {
+        addMessage('JARVIS', 'File editing disabled.');
+      }
+    });
+  }
+}
+
+// File-write approval queue — shown when the bot wants to write a file.
+window.jarvis.onFileWriteApproval(({ jobId, filePath, content, purpose }) => {
+  const wrap = document.createElement('div');
+  wrap.className = 'msg msg-jarvis file-approval';
+  wrap.dataset.jobId = jobId;
+
+  const who = document.createElement('div');
+  who.className = 'msg-who';
+  who.textContent = 'JARVIS — File to write';
+  wrap.appendChild(who);
+
+  if (purpose) {
+    const purp = document.createElement('div');
+    purp.className = 'msg-text file-approval-purpose';
+    purp.textContent = purpose;
+    wrap.appendChild(purp);
+  }
+
+  const pathEl = document.createElement('div');
+  pathEl.className = 'file-approval-path';
+  pathEl.textContent = filePath;
+  wrap.appendChild(pathEl);
+
+  const pre = document.createElement('pre');
+  pre.className = 'code-approval-pre file-approval-pre';
+  pre.textContent = content.length > 3000
+    ? content.slice(0, 3000) + '\n\n[...truncated for display — full content will be written]'
+    : content;
+  wrap.appendChild(pre);
+
+  const actions = document.createElement('div');
+  actions.className = 'code-approval-actions';
+
+  const writeBtn  = document.createElement('button');
+  writeBtn.className = 'chip file-approval-write';
+  writeBtn.textContent = 'Write';
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'chip code-approval-deny';
+  cancelBtn.textContent = 'Cancel';
+
+  const status = document.createElement('span');
+  status.className = 'code-approval-status';
+
+  const respond = async (approved) => {
+    writeBtn.disabled  = true;
+    cancelBtn.disabled = true;
+    status.textContent = approved ? 'Writing…' : 'Cancelled.';
+    await window.jarvis.respondFileWriteApproval({ jobId, approved });
+    if (approved) status.textContent = 'Written — see JARVIS reply for confirmation.';
+  };
+
+  writeBtn.onclick  = () => respond(true);
+  cancelBtn.onclick = () => respond(false);
+
+  actions.appendChild(writeBtn);
+  actions.appendChild(cancelBtn);
   actions.appendChild(status);
   wrap.appendChild(actions);
 
@@ -785,7 +868,10 @@ function askBrain(text) {
           systemPrompt: appSettings.neural.systemPrompt,
         }
       : {};
-    window.jarvis.sendChat(history, requestId, currentProvider, currentModel, options);
+    window.jarvis.sendChat(history, requestId, currentProvider, currentModel, {
+      ...options,
+      fileEditMode: fileEditEnabled,
+    });
   });
 }
 

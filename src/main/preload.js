@@ -30,8 +30,8 @@ contextBridge.exposeInMainWorld('jarvis', {
 
   // Streaming chat. `onChunk` receives { type, text?, message? } for the
   // matching requestId. Returns an unsubscribe function.
-  sendChat: (messages, requestId, provider, model) =>
-    ipcRenderer.invoke('chat:send', { messages, requestId, provider, model }),
+  sendChat: (messages, requestId, provider, model, extra = {}) =>
+    ipcRenderer.invoke('chat:send', { messages, requestId, provider, model, ...extra }),
 
   onChatStream: (requestId, onChunk) => {
     const listener = (_event, payload) => {
@@ -102,6 +102,11 @@ contextBridge.exposeInMainWorld('jarvis', {
   onCodeApproval: (cb) =>
     ipcRenderer.on('codequeue:pending', (_e, payload) => cb(payload)),
   respondCodeApproval: (response) => ipcRenderer.invoke('codequeue:respond', response),
+
+  // In-chat file-write approval queue (Nightly only)
+  onFileWriteApproval: (cb) =>
+    ipcRenderer.on('filequeue:pending', (_e, payload) => cb(payload)),
+  respondFileWriteApproval: (response) => ipcRenderer.invoke('filequeue:respond', response),
 
   // System + dialogs
   getSystemStats: () => ipcRenderer.invoke('system:stats'),

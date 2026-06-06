@@ -62,8 +62,7 @@ async function readFile(rel) {
 }
 
 /**
- * Execute a tool by name. Always resolves to a string (errors included) so the
- * model can recover gracefully.
+ * Execute a read tool by name. Always resolves to a string.
  */
 async function runTool(name, input = {}) {
   try {
@@ -72,6 +71,56 @@ async function runTool(name, input = {}) {
     return `Error: unknown tool "${name}".`;
   } catch (err) {
     return `Error: ${err.message || String(err)}`;
+  }
+}
+
+// ---- Write tool (Nightly / dangerous features only) ----
+
+// Paths the bot must never write to.
+const BLOCKED_WRITE_PREFIXES = [
+  'C:\\Windows',
+  'C:\\Program Files',
+  'C:\\Program Files (x86)',
+];
+
+async function writeFile(filePath, content) {
+  if (!filePath) throw new Error('No file path given.');
+  const abs = path.isAbsolute(filePath)
+    ? filePath
+    : path.resolve(root(), filePath);
+
+  for (const blocked of BLOCKED_WRITE_PREFIXES) {
+    if (abs.toLowerCase().startsWith(blocked.toLowerCase())) {
+      throw new Error(`Writing to "${blocked}" is blocked for safety.`);
+    }
+  }
+  // Don't overwrite the app's own packaged assets.
+  if (abs.startsWith(root()) && abs.endsWith('.asar')) {
+    throw new Error('Cannot overwrite packaged app assets.');
+  }
+
+  await fsp.mkdir(path.dirname(abs), { recursive: true });
+  await fsp.writeFile(abs, content, 'utf8');
+  return `Written ${abs} (${content.length} chars).`;
+}
+
+async function runWriteTool(name, input = {}, ctx = {}) {
+  if (name !== 'write_file') return `Error: unknown write tool "${name}".`;
+  const filePath = String(input.path || '').trim();
+  const content  = String(input.content ?? '');
+  const purpose  = String(input.purpose || '').trim();
+  if (!filePath) return 'No file path provided.';
+
+  if (ctx.approveFileWrite) {
+    const jobId    = 'fw_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+    const approved = await ctx.approveFileWrite(jobId, filePath, content, purpose);
+    if (!approved) return 'The user cancelled the file write — nothing was written.';
+  }
+
+  try {
+    return await writeFile(filePath, content);
+  } catch (err) {
+    return `Error: ${err.message}`;
   }
 }
 
@@ -168,4 +217,27 @@ function parseToolCall(text, names = TOOLS.map((t) => t.name)) {
   return null;
 }
 
-module.exports = { runFileTool: runTool, FILE_TOOLS: TOOLS, parseToolCall };
+const WRITE_TOOLS = [
+  {
+    name: 'write_file',
+    description:
+      'Write (create or overwrite) a file on the Windows host. The user will see the path and full content for approval before anything is written. Use an absolute path or a path relative to the project root.',
+    parameters: {
+      type: 'object',
+      properties: {
+        path:    { type: 'string', description: 'Absolute or relative file path to write.' },
+        content: { type: 'string', description: 'Complete file content to write.' },
+        purpose: { type: 'string', description: 'One sentence: what this file is and why.' },
+      },
+      required: ['path', 'content'],
+    },
+  },
+];
+
+module.exports = {
+  runFileTool: runTool,
+  runWriteTool,
+  FILE_TOOLS: TOOLS,
+  WRITE_TOOLS,
+  parseToolCall,
+};

@@ -79,6 +79,8 @@ const memory = createMemory(() => settings.memory.folder);
 
 // In-chat code approval queue: jobId → resolve(boolean)
 const pendingCodeApprovals = new Map();
+// In-chat file-write approval queue: jobId → resolve(boolean)
+const pendingFileApprovals = new Map();
 
 // Send a code block to the renderer for in-chat review.
 // Resolves to true (run) or false (deny).
@@ -98,6 +100,26 @@ ipcMain.handle('codequeue:respond', (_e, { jobId, approved }) => {
   const resolve = pendingCodeApprovals.get(jobId);
   if (resolve) {
     pendingCodeApprovals.delete(jobId);
+    resolve(!!approved);
+  }
+});
+
+function approveFileWriteInChat(jobId, filePath, content, purpose) {
+  return new Promise((resolve) => {
+    pendingFileApprovals.set(jobId, resolve);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('filequeue:pending', { jobId, filePath, content, purpose });
+    } else {
+      pendingFileApprovals.delete(jobId);
+      resolve(false);
+    }
+  });
+}
+
+ipcMain.handle('filequeue:respond', (_e, { jobId, approved }) => {
+  const resolve = pendingFileApprovals.get(jobId);
+  if (resolve) {
+    pendingFileApprovals.delete(jobId);
     resolve(!!approved);
   }
 });
@@ -132,11 +154,14 @@ function wantsFileAccess(messages) {
 }
 
 // Build the per-request tool context from current settings.
-function buildToolContext(messages) {
+function buildToolContext(messages, { fileEditMode = false } = {}) {
+  const fileEdit = fileEditMode && dangerousFeaturesEnabled;
   return {
     caps: {
-      // File tools only when the user is explicitly asking about the bot's source.
-      files: wantsFileAccess(messages),
+      // File read: explicit code question OR file-edit mode is on.
+      files: wantsFileAccess(messages) || fileEdit,
+      // File write: only when the nightly file-edit toggle is active.
+      fileWrite: fileEdit,
       powershell:
         settings.automation.powershell || settings.automation.desktopControl,
       scripting: settings.automation.scripting,
@@ -146,6 +171,7 @@ function buildToolContext(messages) {
     },
     approve: approveCommand,
     approveCode: approveCodeInChat,
+    approveFileWrite: approveFileWriteInChat,
     vmConfig: settings.vm,
     vmUnattended: settings.vm.allowUnattended,
     memory: settings.memory.longTerm ? memory : null,
@@ -312,7 +338,7 @@ ipcMain.handle('models:list', async () => ({
 // The renderer sends history + the chosen provider/model; we stream tokens back.
 ipcMain.handle(
   'chat:send',
-  async (event, { messages, requestId, provider, model, options }) => {
+  async (event, { messages, requestId, provider, model, options, fileEditMode }) => {
     const send = (chunk) =>
       event.sender.send('chat:stream', { requestId, ...chunk });
 
@@ -360,7 +386,7 @@ ipcMain.handle(
       await brain.streamReply(messages, {
         model,
         options: opts,
-        toolCtx: buildToolContext(messages),
+        toolCtx: buildToolContext(messages, { fileEditMode }),
         onText: (text) => send({ type: 'text', text }),
         onDone: handleDone,
         onError: (message) => send({ type: 'error', message }),
@@ -387,7 +413,7 @@ ipcMain.handle(
             await brain.streamReply(messages, {
               model,
               options: opts,
-              toolCtx: buildToolContext(messages),
+              toolCtx: buildToolContext(messages, { fileEditMode }),
               onText: (text) => send({ type: 'text', text }),
               onDone: handleDone,
               onError: (message) => send({ type: 'error', message }),

@@ -479,6 +479,43 @@ body::after {
   margin-left: 4px;
 }
 
+/* ---------- File Write Approval Block ---------- */
+.file-approval {
+  border-color: #d97706 !important;
+  box-shadow: 0 0 12px rgba(217, 119, 6, 0.35) !important;
+}
+.file-approval .msg-who {
+  color: #f59e0b !important;
+  border-bottom-color: rgba(217, 119, 6, 0.3) !important;
+}
+.file-approval-purpose {
+  padding: 6px 12px 4px !important;
+  font-size: 12px;
+  color: #ccc !important;
+  background: transparent !important;
+  border: none !important;
+}
+.file-approval-path {
+  padding: 4px 14px 6px;
+  font-family: 'Cascadia Code', 'Consolas', monospace;
+  font-size: 12px;
+  color: #fbbf24;
+  word-break: break-all;
+}
+.file-approval-pre {
+  border-top-color: rgba(217, 119, 6, 0.3) !important;
+  border-bottom-color: rgba(217, 119, 6, 0.3) !important;
+  color: #fde68a !important;
+}
+.file-approval-write {
+  background: rgba(217, 119, 6, 0.18) !important;
+  border-color: #d97706 !important;
+  color: #f59e0b !important;
+}
+.file-approval-write:hover:not(:disabled) {
+  background: rgba(217, 119, 6, 0.32) !important;
+}
+
 /* ---------- Composer ---------- */
 .composer {
   display: flex;

@@ -2,7 +2,7 @@
 
 // Central, capability-aware tool registry. All tool groups are capability-gated;
 // no tools are exposed unless the capability is explicitly enabled.
-const { FILE_TOOLS, runFileTool, parseToolCall: rawParse } = require('./files');
+const { FILE_TOOLS, runFileTool, WRITE_TOOLS, runWriteTool, parseToolCall: rawParse } = require('./files');
 const { AUTOMATION_TOOLS, runAutomationTool } = require('./automation');
 const { VM_TOOLS, runVmTool } = require('./vm');
 const { MEMORY_TOOLS, runMemoryTool } = require('./memory');
@@ -58,7 +58,7 @@ async function runCodeTool(name, input, ctx = {}) {
 }
 
 const ALL_NAMES = [
-  ...FILE_TOOLS, ...AUTOMATION_TOOLS, ...VM_TOOLS, ...MEMORY_TOOLS, ...CODE_TOOLS,
+  ...FILE_TOOLS, ...WRITE_TOOLS, ...AUTOMATION_TOOLS, ...VM_TOOLS, ...MEMORY_TOOLS, ...CODE_TOOLS,
 ].map((t) => t.name);
 
 const has = (list, name) => list.some((t) => t.name === name);
@@ -67,6 +67,7 @@ const has = (list, name) => list.some((t) => t.name === name);
 function specs(caps = {}) {
   let list = [];
   if (caps.files)      list = list.concat(FILE_TOOLS);
+  if (caps.fileWrite)  list = list.concat(WRITE_TOOLS);
   if (caps.powershell) list = list.concat(AUTOMATION_TOOLS);
   if (caps.vm)         list = list.concat(VM_TOOLS);
   if (caps.memory)     list = list.concat(MEMORY_TOOLS);
@@ -89,6 +90,7 @@ const parseToolCall = (text) => rawParse(text, ALL_NAMES);
 /** Dispatch a tool by name. ctx carries settings-derived gating + memory. */
 async function run(name, input, ctx = {}) {
   if (has(FILE_TOOLS, name))      return runFileTool(name, input);
+  if (has(WRITE_TOOLS, name))     return runWriteTool(name, input, ctx);
   if (has(AUTOMATION_TOOLS, name)) return runAutomationTool(name, input, ctx);
   if (has(VM_TOOLS, name))        return runVmTool(name, input, ctx);
   if (has(MEMORY_TOOLS, name))    return runMemoryTool(name, input, ctx);
