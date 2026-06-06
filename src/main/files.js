@@ -76,11 +76,10 @@ async function runTool(name, input = {}) {
 
 // ---- Write tool (Nightly / dangerous features only) ----
 
-// Paths the bot must never write to.
+// Only block the OS kernel — everything else (including game folders) is
+// the user's call via the approval block.
 const BLOCKED_WRITE_PREFIXES = [
   'C:\\Windows',
-  'C:\\Program Files',
-  'C:\\Program Files (x86)',
 ];
 
 async function writeFile(filePath, content) {
