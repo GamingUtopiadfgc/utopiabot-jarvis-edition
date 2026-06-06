@@ -742,7 +742,7 @@ ipcMain.handle('vm:detect', async () => {
 
 // ---- IPC: local commands (open apps, time, search, etc.) ----
 ipcMain.handle('command:run', async (_event, { name, args }) => {
-  return runCommand(name, args);
+  return runCommand(name, args, { dangerousFeatures: dangerousFeaturesEnabled });
 });
 
 // ---- IPC: neural TTS engines (Piper / Coqui) ----

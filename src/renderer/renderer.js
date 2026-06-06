@@ -573,6 +573,22 @@ function parseCommand(raw) {
       ['settings',       'settings'],
       ['camera',         'camera'],
       ['cmd',            'cmd'],
+      // Nightly-only modding tools
+      ...(window.jarvis.dangerousFeatures ? [
+        ['cheat engine',   'cheatengine'],
+        ['cheat table',    'cheat table'],
+        ['cheatengine',    'cheatengine'],
+        ['x64dbg',         'x64dbg'],
+        ['x32dbg',         'x64dbg'],
+        ['dnspy',          'dnspy'],
+        ['dn spy',         'dnspy'],
+        ['ilspy',          'ilspy'],
+        ['hxd',            'hxd'],
+        ['hex editor',     'hex editor'],
+        ['vortex',         'vortex'],
+        ['mod organizer',  'mod organizer'],
+        ['nexus mod',      'nexus'],
+      ] : []),
     ];
     for (const [phrase, key] of APP_PHRASES) {
       if (text.includes(phrase)) return { name: 'open-app', args: { target: key } };

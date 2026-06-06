@@ -1,7 +1,9 @@
 'use strict';
 
 const { shell } = require('electron');
-const { spawn } = require('child_process');
+const { spawn, execFile } = require('child_process');
+const { promisify } = require('util');
+const execFileAsync = promisify(execFile);
 
 // Common sites the user can open by name.
 const SITES = {
@@ -17,8 +19,10 @@ const SITES = {
   weather: 'https://www.weather.com',
 };
 
-// Windows apps. Values are either an executable name (launched via
-// "start "" <exe>") or a URI scheme (opened via shell.openExternal).
+// Windows apps. Values are either:
+//   { exe }   — launched via "start "" <exe>" (must be in PATH or full path)
+//   { uri }   — opened via shell.openExternal
+//   { find }  — array of glob-style search patterns; PowerShell locates the exe
 const APPS = {
   notepad:       { exe: 'notepad' },
   calculator:    { exe: 'calc' },
@@ -35,6 +39,19 @@ const APPS = {
   devmgmt:       { exe: 'devmgmt.msc' },
   settings:      { uri: 'ms-settings:' },
   camera:        { uri: 'microsoft.windows.camera:' },
+
+  // ---- Game modding tools (searched across drives if not in PATH) ----
+  cheatengine:   { find: ['cheatengine-x86_64.exe', 'cheatengine-i386.exe', 'cheatengine.exe'] },
+  x64dbg:        { find: ['x64dbg.exe', 'x32dbg.exe'] },
+  dnspy:         { find: ['dnSpy.exe', 'dnSpy-x86.exe'] },
+  ilspy:         { find: ['ILSpy.exe'] },
+  hxd:           { find: ['HxD.exe'] },
+  'hex editor':  { find: ['HxD.exe', 'HexEditor.exe'] },
+  vortex:        { find: ['Vortex.exe'] },
+  mo2:           { find: ['ModOrganizer.exe'] },
+  'mod organizer':{ find: ['ModOrganizer.exe'] },
+  nexus:         { find: ['Nexus Mod Manager.exe', 'NexusModManager.exe'] },
+  'cheat table': { find: ['cheatengine-x86_64.exe', 'cheatengine-i386.exe', 'cheatengine.exe'] },
 };
 
 function ok(message, data) {
@@ -59,12 +76,47 @@ function launchExe(exe) {
   });
 }
 
+// Search common drives + user profile for any of the given exe names,
+// then launch the first one found. Returns the found path or throws.
+async function findAndLaunch(exeNames) {
+  const searchRoots = ['C:\\', 'D:\\', 'E:\\', process.env.USERPROFILE || ''].filter(Boolean);
+  // Build a PS1 one-liner that searches without recursing into deep system trees.
+  const patterns = exeNames.map((n) => `'${n.replace(/'/g, "''")}'`).join(',');
+  const searchDirs = searchRoots
+    .map((r) => `'${r.replace(/'/g, "''")}Program Files','${r.replace(/'/g, "''")}Program Files (x86)'`)
+    .join(',');
+  const psCmd = [
+    `$names = @(${patterns});`,
+    `$dirs  = @(${searchDirs});`,
+    `$hit   = $null;`,
+    `foreach ($d in $dirs) {`,
+    `  if (!(Test-Path $d)) { continue }`,
+    `  foreach ($n in $names) {`,
+    `    $f = Get-ChildItem -Path $d -Filter $n -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1;`,
+    `    if ($f) { $hit = $f.FullName; break }`,
+    `  }`,
+    `  if ($hit) { break }`,
+    `}`,
+    `if ($hit) { Write-Output $hit } else { exit 1 }`,
+  ].join(' ');
+
+  const { stdout } = await execFileAsync(
+    'powershell.exe',
+    ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', psCmd],
+    { timeout: 15000 }
+  );
+  const exePath = stdout.trim();
+  if (!exePath) throw new Error('not found');
+  await launchExe(exePath);
+  return exePath;
+}
+
 /**
  * Run a named local command. Called from the renderer via IPC.
  * @param {string} name
  * @param {Record<string, any>} [args]
  */
-async function runCommand(name, args = {}) {
+async function runCommand(name, args = {}, ctx = {}) {
   switch (name) {
     case 'time': {
       const now = new Date();
@@ -103,6 +155,21 @@ async function runCommand(name, args = {}) {
       if (entry.uri) {
         shell.openExternal(entry.uri);
         return ok(`Opening ${key}.`);
+      }
+
+      // find-type entries (modding tools) require the Nightly build.
+      if (entry.find) {
+        if (!ctx.dangerousFeatures) {
+          return fail(`${key} is only available in the Nightly build.`);
+        }
+        try {
+          const found = await findAndLaunch(entry.find);
+          return ok(`Launching ${key} from ${found}.`);
+        } catch {
+          return fail(
+            `I couldn't find ${key} on this PC. Make sure it's installed and try again.`
+          );
+        }
       }
 
       try {
