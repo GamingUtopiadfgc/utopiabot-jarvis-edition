@@ -53,6 +53,7 @@ const DEFAULTS = {
   automation: {
     desktopControl: false,
     powershell: false,
+    scripting: false, // allow bot to write + run scripts via in-chat approval queue
     browserControl: false,
     requireApproval: true,
     securityLevel: 'normal', // 'strict' | 'normal' | 'developer'

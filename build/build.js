@@ -9,9 +9,17 @@
 //
 // extraMetadata.buildChannel is written into the packaged package.json so that
 // src/main/channel.js can read it at runtime without needing env vars.
+const fs = require('fs');
+const path = require('path');
 const builder = require('electron-builder');
 const pkg = require('../package.json');
 const base = pkg.build;
+
+// electron-builder can write extraMetadata back to the source package.json in
+// some versions. Back it up now and restore it unconditionally after the build
+// so that `npm version` never sees a corrupted file.
+const PKG_PATH = path.join(__dirname, '..', 'package.json');
+const pkgBackup = fs.readFileSync(PKG_PATH, 'utf8');
 
 const channel = process.argv[2] === 'nightly' ? 'nightly' : 'daily';
 const nightly = channel === 'nightly';
@@ -46,10 +54,12 @@ if (nightly) {
 console.log(`Building ${channel} channel…`);
 builder.build({ config }).then(
   (artifacts) => {
+    fs.writeFileSync(PKG_PATH, pkgBackup); // restore source package.json
     console.log(`\n${channel} build complete:`);
     for (const a of artifacts) console.log('  ' + a);
   },
   (err) => {
+    fs.writeFileSync(PKG_PATH, pkgBackup); // restore even on failure
     console.error(err);
     process.exit(1);
   }

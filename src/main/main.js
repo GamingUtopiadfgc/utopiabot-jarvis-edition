@@ -1,5 +1,8 @@
 'use strict';
 
+// Logger must be required first — it wraps console before anything else runs.
+const { getLogPath } = require('./logger');
+
 const path = require('path');
 const fs = require('fs');
 const { exec } = require('child_process');
@@ -74,6 +77,31 @@ const brains = {
 // Long-term memory store (folder from settings, default userData/memory).
 const memory = createMemory(() => settings.memory.folder);
 
+// In-chat code approval queue: jobId → resolve(boolean)
+const pendingCodeApprovals = new Map();
+
+// Send a code block to the renderer for in-chat review.
+// Resolves to true (run) or false (deny).
+function approveCodeInChat(jobId, code, language, purpose) {
+  return new Promise((resolve) => {
+    pendingCodeApprovals.set(jobId, resolve);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('codequeue:pending', { jobId, code, language, purpose });
+    } else {
+      pendingCodeApprovals.delete(jobId);
+      resolve(false);
+    }
+  });
+}
+
+ipcMain.handle('codequeue:respond', (_e, { jobId, approved }) => {
+  const resolve = pendingCodeApprovals.get(jobId);
+  if (resolve) {
+    pendingCodeApprovals.delete(jobId);
+    resolve(!!approved);
+  }
+});
+
 // Approve a privileged automation command per the security level / approval
 // setting. Shows a blocking native dialog unless trusted.
 async function approveCommand(cmd, purpose) {
@@ -94,17 +122,30 @@ async function approveCommand(cmd, purpose) {
   return response === 1;
 }
 
+// Return true only when the last user message explicitly asks about the bot's
+// own source code, files, or internal implementation. Used to gate FILE_TOOLS
+// so they are never offered for general-knowledge or conversational queries.
+function wantsFileAccess(messages) {
+  const last = [...(messages || [])].reverse().find((m) => m.role === 'user');
+  const text = typeof last?.content === 'string' ? last.content : '';
+  return /\b(source code|source file|read file|list file|your code|codebase|how (do|does) (you|it|this|jarvis) work(s| internally)?|show (me )?your (code|source|file|config|settings|persona|implementation)|\.js\b|\.json\b|package\.json|settings\.json|how (are|were) you (built|made|programmed|written))\b/i.test(text);
+}
+
 // Build the per-request tool context from current settings.
-function buildToolContext() {
+function buildToolContext(messages) {
   return {
     caps: {
+      // File tools only when the user is explicitly asking about the bot's source.
+      files: wantsFileAccess(messages),
       powershell:
         settings.automation.powershell || settings.automation.desktopControl,
+      scripting: settings.automation.scripting,
       // VM control is a dangerous feature — only honored in the Nightly build.
       vm: settings.vm.enabled && dangerousFeaturesEnabled,
       memory: settings.memory.longTerm,
     },
     approve: approveCommand,
+    approveCode: approveCodeInChat,
     vmConfig: settings.vm,
     vmUnattended: settings.vm.allowUnattended,
     memory: settings.memory.longTerm ? memory : null,
@@ -319,7 +360,7 @@ ipcMain.handle(
       await brain.streamReply(messages, {
         model,
         options: opts,
-        toolCtx: buildToolContext(),
+        toolCtx: buildToolContext(messages),
         onText: (text) => send({ type: 'text', text }),
         onDone: handleDone,
         onError: (message) => send({ type: 'error', message }),
@@ -336,9 +377,9 @@ ipcMain.handle(
       ) {
         send({ type: 'error', message: `Model "${model}" not found. Auto-pulling…` });
         sendPullProgress(`Pulling ${model}…`);
-        
+
         const pullResult = await brains.ollama.pullModel(model, sendPullProgress);
-        
+
         if (pullResult.ok) {
           sendPullProgress(`✓ ${model} ready`);
           // Retry the chat with the now-available model
@@ -346,7 +387,7 @@ ipcMain.handle(
             await brain.streamReply(messages, {
               model,
               options: opts,
-              toolCtx: buildToolContext(),
+              toolCtx: buildToolContext(messages),
               onText: (text) => send({ type: 'text', text }),
               onDone: handleDone,
               onError: (message) => send({ type: 'error', message }),
@@ -498,6 +539,149 @@ ipcMain.handle('ollama:install', async () => {
 
 // ---- IPC: system stats + folder picker ----
 ipcMain.handle('system:stats', () => getStats());
+
+ipcMain.handle('logs:export', async () => {
+  const { filePath, canceled } = await dialog.showSaveDialog(settingsWin || mainWindow, {
+    title: 'Save Debug Log',
+    defaultPath: `utopiabot-log-${new Date().toISOString().replace(/[:.]/g, '-')}.txt`,
+    filters: [{ name: 'Log / Text', extensions: ['txt', 'log'] }],
+  });
+  if (canceled || !filePath) return { ok: false, cancelled: true };
+
+  try {
+    const s = settingsStore.load();
+    const { CHANNEL } = require('./channel');
+    const pkg = require('../../package.json');
+    const header = [
+      'UtopiaBot JARVIS — Debug Log Export',
+      `Generated : ${new Date().toISOString()}`,
+      `Version   : ${pkg.version} (${CHANNEL})`,
+      `Platform  : ${process.platform} ${process.arch}`,
+      `Node      : ${process.version}`,
+      `Electron  : ${process.versions.electron}`,
+      '',
+      '--- Settings snapshot ---',
+      `provider    : ${s.neural.provider}`,
+      `model       : ${s.neural.model || '(none)'}`,
+      `tts engine  : ${s.voice.engine}`,
+      `stt engine  : ${s.voice.sttEngine}`,
+      `memory      : ${s.memory.longTerm}`,
+      `vm enabled  : ${s.vm.enabled}`,
+      `debug logs  : ${s.advanced.debugLogs}`,
+      '',
+      '--- Log ---',
+      '',
+    ].join('\n');
+
+    let logContent = '(no log entries yet)';
+    try { logContent = fs.readFileSync(getLogPath(), 'utf8'); } catch { /* not created yet */ }
+
+    fs.writeFileSync(filePath, header + logContent, 'utf8');
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message || String(err) };
+  }
+});
+ipcMain.handle('logs:report', async () => {
+  const ghToken = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
+  const s = settingsStore.load();
+  const { CHANNEL } = require('./channel');
+  const pkg = require('../../package.json');
+
+  let logContent = '(no log entries yet)';
+  try { logContent = fs.readFileSync(getLogPath(), 'utf8'); } catch { /* not written yet */ }
+
+  const versionBlock = [
+    `**Version:** ${pkg.version} (${CHANNEL})`,
+    `**Platform:** ${process.platform} ${process.arch}`,
+    `**Node:** ${process.version}  |  **Electron:** ${process.versions.electron}`,
+    '',
+    '**Settings:**',
+    `- Provider: \`${s.neural.provider}\`  Model: \`${s.neural.model || 'none'}\``,
+    `- TTS: \`${s.voice.engine}\`  STT: \`${s.voice.sttEngine}\``,
+    `- Memory: ${s.memory.longTerm}  |  VM: ${s.vm.enabled}`,
+  ].join('\n');
+
+  if (ghToken) {
+    // 1. Create a secret Gist with the full log so nothing is truncated.
+    let gistUrl = null;
+    try {
+      const gistRes = await fetch('https://api.github.com/gists', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${ghToken}`,
+          'Content-Type': 'application/json',
+          'User-Agent': 'UtopiaBot-JARVIS',
+        },
+        body: JSON.stringify({
+          description: `UtopiaBot JARVIS debug log — v${pkg.version} ${new Date().toISOString()}`,
+          public: false,
+          files: { 'jarvis.log': { content: logContent || '(empty)' } },
+        }),
+      });
+      if (gistRes.ok) {
+        const g = await gistRes.json();
+        gistUrl = g.html_url;
+      }
+    } catch { /* gist failed — issue body will include a log tail instead */ }
+
+    // 2. Create an Issue referencing the Gist (or embedding a tail if Gist failed).
+    const body = [
+      '<!-- Auto-generated by UtopiaBot JARVIS Settings → System → Report on GitHub -->',
+      '## Environment',
+      '',
+      versionBlock,
+      '',
+      '## Description',
+      '',
+      '_Describe what you did, what you expected, and what happened instead._',
+      '',
+      '## Log',
+      '',
+      gistUrl
+        ? `Full log: ${gistUrl}`
+        : '```\n' + logContent.slice(-4000) + '\n```',
+    ].join('\n');
+
+    try {
+      const issueRes = await fetch(
+        'https://api.github.com/repos/GamingUtopiadfgc/utopiabot-jarvis-edition/issues',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${ghToken}`,
+            'Content-Type': 'application/json',
+            'User-Agent': 'UtopiaBot-JARVIS',
+          },
+          body: JSON.stringify({
+            title: `Bug report — v${pkg.version} (${new Date().toLocaleDateString()})`,
+            body,
+            labels: ['bug'],
+          }),
+        }
+      );
+      const issue = await issueRes.json();
+      if (!issueRes.ok) return { ok: false, error: issue.message || `GitHub API error ${issueRes.status}` };
+      shell.openExternal(issue.html_url);
+      return { ok: true, url: issue.html_url };
+    } catch (err) {
+      return { ok: false, error: err.message || String(err) };
+    }
+  } else {
+    // No token — open the issues/new page with version info pre-filled.
+    // Log tail is embedded in the body (URL length limits us to ~2000 chars).
+    const tail = logContent.slice(-1800);
+    const body = encodeURIComponent(
+      `## Environment\n\n${versionBlock}\n\n## Description\n\n_Describe what happened._\n\n## Log tail\n\n\`\`\`\n${tail}\n\`\`\``
+    );
+    const title = encodeURIComponent(`Bug report — v${pkg.version}`);
+    shell.openExternal(
+      `https://github.com/GamingUtopiadfgc/utopiabot-jarvis-edition/issues/new?title=${title}&body=${body}`
+    );
+    return { ok: true, opened: true };
+  }
+});
+
 ipcMain.handle('dialog:pickFolder', async () => {
   const res = await dialog.showOpenDialog(settingsWin || mainWindow, {
     properties: ['openDirectory'],

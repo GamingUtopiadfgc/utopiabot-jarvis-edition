@@ -341,6 +341,68 @@ window.jarvis.onUpdateStatus(({ state, version, message }) => {
   }
 });
 
+// ===================================================================
+// Code Approval Queue — renders an inline approve/deny block when
+// the bot wants to run a script it wrote.
+// ===================================================================
+window.jarvis.onCodeApproval(({ jobId, code, language, purpose }) => {
+  const wrap = document.createElement('div');
+  wrap.className = 'msg msg-jarvis code-approval';
+  wrap.dataset.jobId = jobId;
+
+  const who = document.createElement('div');
+  who.className = 'msg-who';
+  who.textContent = 'JARVIS — Code to run';
+  wrap.appendChild(who);
+
+  if (purpose) {
+    const purp = document.createElement('div');
+    purp.className = 'msg-text code-approval-purpose';
+    purp.textContent = purpose;
+    wrap.appendChild(purp);
+  }
+
+  const pre = document.createElement('pre');
+  pre.className = 'code-approval-pre';
+  pre.textContent = code;
+  wrap.appendChild(pre);
+
+  const actions = document.createElement('div');
+  actions.className = 'code-approval-actions';
+
+  const runBtn = document.createElement('button');
+  runBtn.className = 'chip code-approval-run';
+  runBtn.textContent = 'Run';
+
+  const denyBtn = document.createElement('button');
+  denyBtn.className = 'chip code-approval-deny';
+  denyBtn.textContent = 'Deny';
+
+  const status = document.createElement('span');
+  status.className = 'code-approval-status';
+
+  const respond = async (approved) => {
+    runBtn.disabled = true;
+    denyBtn.disabled = true;
+    status.textContent = approved ? 'Running…' : 'Denied.';
+    await window.jarvis.respondCodeApproval({ jobId, approved });
+    if (approved) {
+      status.textContent = 'Script sent — see JARVIS reply for output.';
+    }
+  };
+
+  runBtn.onclick  = () => respond(true);
+  denyBtn.onclick = () => respond(false);
+
+  actions.appendChild(runBtn);
+  actions.appendChild(denyBtn);
+  actions.appendChild(status);
+  wrap.appendChild(actions);
+
+  transcript.appendChild(wrap);
+  transcript.scrollTop = transcript.scrollHeight;
+});
+
 function tickClock() {
   const now = new Date();
   $('clock').textContent = now.toLocaleTimeString([], { hour12: false });

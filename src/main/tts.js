@@ -209,26 +209,31 @@ async function synthPiper(text, voiceId) {
   const out = path.join(outDir(), `piper-${Date.now()}.wav`);
   await new Promise((resolve, reject) => {
     const p = spawn(piperExe(), ['-m', v.path, '-f', out], { windowsHide: true });
-    p.on('error', reject);
-    p.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`Piper exited ${code}`))));
+    const timer = setTimeout(() => { p.kill(); reject(new Error('Piper timed out (30s).')); }, 30000);
+    p.on('error', (err) => { clearTimeout(timer); reject(err); });
+    p.on('close', (code) => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error(`Piper exited ${code}`)); });
     p.stdin.write(text);
     p.stdin.end();
   });
+  if (!fs.existsSync(out)) throw new Error('Piper finished but produced no audio file.');
   return out;
 }
 
 async function synthCoqui(text, modelName) {
-  const tts = venvBin('tts');
-  if (!fs.existsSync(tts)) throw new Error('Coqui TTS is not installed.');
+  const ttsBin = venvBin('tts');
+  if (!fs.existsSync(ttsBin)) throw new Error('Coqui TTS is not installed.');
   const model = modelName || DEFAULT_COQUI_MODEL;
 
   await fs.promises.mkdir(outDir(), { recursive: true });
   const out = path.join(outDir(), `coqui-${Date.now()}.wav`);
+  // 3-minute timeout covers first-run model download + synthesis.
   await new Promise((resolve, reject) => {
-    const p = spawn(tts, ['--text', text, '--model_name', model, '--out_path', out], { windowsHide: true });
-    p.on('error', reject);
-    p.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`Coqui exited ${code}`))));
+    const p = spawn(ttsBin, ['--text', text, '--model_name', model, '--out_path', out], { windowsHide: true });
+    const timer = setTimeout(() => { p.kill(); reject(new Error('Coqui TTS timed out (3 min). First-run model download can take several minutes — try again.')); }, 180000);
+    p.on('error', (err) => { clearTimeout(timer); reject(err); });
+    p.on('close', (code) => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error(`Coqui exited ${code}`)); });
   });
+  if (!fs.existsSync(out)) throw new Error('Coqui finished but produced no audio file.');
   return out;
 }
 

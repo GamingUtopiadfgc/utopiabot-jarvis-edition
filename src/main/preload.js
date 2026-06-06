@@ -98,8 +98,15 @@ contextBridge.exposeInMainWorld('jarvis', {
   testVmConnection: (cfg) => ipcRenderer.invoke('vm:test', cfg),
   detectVms: () => ipcRenderer.invoke('vm:detect'),
 
+  // In-chat code approval queue
+  onCodeApproval: (cb) =>
+    ipcRenderer.on('codequeue:pending', (_e, payload) => cb(payload)),
+  respondCodeApproval: (response) => ipcRenderer.invoke('codequeue:respond', response),
+
   // System + dialogs
   getSystemStats: () => ipcRenderer.invoke('system:stats'),
+  exportLogs: () => ipcRenderer.invoke('logs:export'),
+  reportLogs: () => ipcRenderer.invoke('logs:report'),
   pickFolder: () => ipcRenderer.invoke('dialog:pickFolder'),
   pickFile: () => ipcRenderer.invoke('dialog:pickFile'),
 });

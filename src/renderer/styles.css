@@ -410,6 +410,75 @@ body::after {
   }
 }
 
+/* ---------- Code Approval Block ---------- */
+.code-approval {
+  border: 1px solid var(--cyan);
+  box-shadow: 0 0 12px var(--cyan-glow);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.code-approval .msg-who {
+  color: var(--cyan);
+  padding: 6px 12px 4px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--panel-border);
+}
+.code-approval-purpose {
+  padding: 6px 12px 4px !important;
+  font-size: 12px;
+  color: #ccc !important;
+  background: transparent !important;
+  border: none !important;
+}
+.code-approval-pre {
+  margin: 0;
+  padding: 10px 14px;
+  background: rgba(0, 0, 0, 0.45);
+  font-family: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: #b8f0c8;
+  overflow-x: auto;
+  max-height: 320px;
+  white-space: pre;
+  border-top: 1px solid var(--panel-border);
+  border-bottom: 1px solid var(--panel-border);
+}
+.code-approval-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+}
+.code-approval-run {
+  background: rgba(0, 220, 130, 0.18) !important;
+  border-color: #00dc82 !important;
+  color: #00dc82 !important;
+}
+.code-approval-run:hover:not(:disabled) {
+  background: rgba(0, 220, 130, 0.32) !important;
+}
+.code-approval-deny {
+  background: rgba(255, 90, 106, 0.15) !important;
+  border-color: var(--danger) !important;
+  color: var(--danger) !important;
+}
+.code-approval-deny:hover:not(:disabled) {
+  background: rgba(255, 90, 106, 0.28) !important;
+}
+.code-approval-run:disabled,
+.code-approval-deny:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.code-approval-status {
+  font-size: 11px;
+  color: #888;
+  margin-left: 4px;
+}
+
 /* ---------- Composer ---------- */
 .composer {
   display: flex;

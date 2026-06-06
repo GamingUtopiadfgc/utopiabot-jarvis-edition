@@ -470,6 +470,7 @@ function populate(s) {
   // Automation
   $('a-desktopControl').checked = s.automation.desktopControl;
   $('a-powershell').checked = s.automation.powershell;
+  $('a-scripting').checked = s.automation.scripting;
   $('a-browserControl').checked = s.automation.browserControl;
   $('a-requireApproval').checked = s.automation.requireApproval;
   const sl = document.querySelector(`#a-securityLevel input[value="${s.automation.securityLevel}"]`);
@@ -549,6 +550,7 @@ function collect() {
     automation: {
       desktopControl: $('a-desktopControl').checked,
       powershell: $('a-powershell').checked,
+      scripting: $('a-scripting').checked,
       browserControl: $('a-browserControl').checked,
       requireApproval: $('a-requireApproval').checked,
       securityLevel: radio('a-securityLevel') || 'normal',
