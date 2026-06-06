@@ -13,6 +13,14 @@ const DEFAULTS = {
     notifications: true,
     launchOllama: true,
   },
+  profile: {
+    // Captured by the first-run onboarding flow so JARVIS knows who it's helping.
+    onboarded: false,
+    name: '',
+    address: 'sir', // how JARVIS addresses the user: 'sir' | 'ma'am' | 'name'
+    about: '', // free-form: role, interests, context the user shared
+    responseStyle: 'balanced', // 'concise' | 'balanced' | 'detailed'
+  },
   voice: {
     engine: 'windows', // 'windows' | 'piper' | 'coqui'
     wakeWord: 'Hey Utopia',
@@ -48,6 +56,17 @@ const DEFAULTS = {
     browserControl: false,
     requireApproval: true,
     securityLevel: 'normal', // 'strict' | 'normal' | 'developer'
+  },
+  vm: {
+    // DANGER ZONE: let the assistant run shell commands on a remote VM over SSH.
+    enabled: false,
+    host: '',
+    port: 22,
+    username: '',
+    authMethod: 'password', // 'password' | 'key'
+    password: '', // stored in plaintext in settings.json
+    privateKeyPath: '',
+    allowUnattended: false, // true = run VM commands without the approval dialog
   },
   appearance: {
     theme: 'jarvis', // 'jarvis' | 'red' | 'emerald' | 'purple'

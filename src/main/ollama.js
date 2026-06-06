@@ -167,7 +167,7 @@ function createOllamaBrain(getHost) {
       }
     },
 
-    async streamReply(messages, { model, options = {}, toolCtx = {}, onText, onDone, onError, onTool }) {
+    async streamReply(messages, { model, options = {}, toolCtx = {}, onText, onDone, onError, onTool, onReset }) {
       if (!model) {
         onError('No Ollama model selected, sir.');
         return;
@@ -176,6 +176,7 @@ function createOllamaBrain(getHost) {
       let systemText = options.systemPrompt?.trim()
         ? options.systemPrompt
         : SYSTEM_PROMPT;
+      if (options.userProfile) systemText += `\n\n${options.userProfile}`;
       if (options.memoryContext)
         systemText += `\n\nThings you remember about the user:\n${options.memoryContext}`;
       const toolSpecs = toOllama(specs(toolCtx.caps || {}));
@@ -252,6 +253,19 @@ function createOllamaBrain(getHost) {
               working.push({ role: 'tool', name: c.name, content: out });
             }
             continue; // feed results back to the model
+          }
+
+          // Pure JSON with no recognized tool call — model used an unsupported
+          // format. Retry once without tools so it gives a plain-text answer.
+          if (useTools) {
+            const trimmed = content.trim();
+            if (
+              (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+              (trimmed.startsWith('[') && trimmed.endsWith(']'))
+            ) {
+              useTools = false;
+              continue;
+            }
           }
 
           if (content) onText(content);

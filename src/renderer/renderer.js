@@ -28,6 +28,12 @@ $('max-btn').onclick = () => window.jarvis.toggleMaximize();
 $('close-btn').onclick = () => window.jarvis.close();
 $('settings-btn').onclick = () => window.jarvis.openSettings();
 
+// Mark the window when running the dangerous Nightly channel.
+if (window.jarvis.channel === 'nightly') {
+  const sub = document.querySelector('.brand-sub');
+  if (sub) sub.textContent = 'JARVIS · NIGHTLY';
+}
+
 // ===================================================================
 // Settings: apply appearance, voice, and neural prefs
 // ===================================================================
@@ -187,9 +193,12 @@ autoListenToggle.addEventListener('change', () => {
 window.jarvis.getSettings().then((s) => {
   applyAppSettings(s);
   populateModels().then(() => {
-    if (s.voice.startupGreeting && !greeted) {
+    // First launch: get to know the user before anything else.
+    if (!s.profile?.onboarded) {
+      startOnboarding();
+    } else if (s.voice.startupGreeting && !greeted) {
       greeted = true;
-      speak('Systems online. Good to see you, sir.', true);
+      speak(`Systems online. Good to see you, ${addressTerm(s.profile)}.`, true);
     }
   });
 });
@@ -439,6 +448,140 @@ function maybeWhatsNew(text) {
 }
 
 // ===================================================================
+// First-run onboarding — a short scripted conversation so JARVIS can
+// get to know the user. Runs right in the transcript; needs no brain.
+// ===================================================================
+let onboarding = null; // { step, answers } while active
+
+const ONBOARD_STEPS = [
+  { key: 'name', type: 'text', q: () => 'Before we begin — may I ask your name?' },
+  {
+    key: 'address',
+    type: 'choice',
+    q: (a) => `A pleasure${a.name ? ', ' + a.name : ''}. How would you like me to address you?`,
+    options: [
+      { label: 'Sir', value: 'sir' },
+      { label: "Ma'am", value: "ma'am" },
+      { label: 'By my name', value: 'name' },
+    ],
+  },
+  {
+    key: 'about',
+    type: 'text',
+    q: () => 'What should I know about you — your work, your interests, anything you care about?',
+  },
+  {
+    key: 'responseStyle',
+    type: 'choice',
+    q: () => 'And how do you prefer your answers?',
+    options: [
+      { label: 'Short & to the point', value: 'concise' },
+      { label: 'Balanced', value: 'balanced' },
+      { label: 'Thorough & detailed', value: 'detailed' },
+    ],
+  },
+];
+
+// How to address the user, derived from a profile-shaped object.
+function addressTerm(p) {
+  if (!p) return 'sir';
+  if (p.address === 'name' && p.name) return p.name;
+  if (p.address === "ma'am") return "ma'am";
+  return 'sir';
+}
+
+function startOnboarding() {
+  onboarding = { step: 0, answers: {} };
+  transcript.innerHTML = '';
+  addMessage(
+    'JARVIS',
+    "Welcome. I'm JARVIS — your assistant. Let me ask a few quick questions so I can serve you better."
+  );
+  speak("Welcome. I'm JARVIS. Let me ask a few quick questions so I can serve you better.", true);
+  setReactor('listening', 'GETTING ACQUAINTED');
+  setTimeout(askOnboardingStep, 700);
+}
+
+function askOnboardingStep() {
+  if (!onboarding) return;
+  const step = ONBOARD_STEPS[onboarding.step];
+  const text = typeof step.q === 'function' ? step.q(onboarding.answers) : step.q;
+  const body = addMessage('JARVIS', text);
+  speak(text, true);
+  input.placeholder =
+    step.type === 'choice' ? 'Pick one above, or type your answer…' : 'Type your answer…';
+  if (step.type === 'choice') {
+    for (const opt of step.options) {
+      const btn = addChip(body, opt.label, () => {
+        if (!onboarding) return;
+        addMessage('YOU', opt.label);
+        onboardingAnswer(opt.value);
+      });
+      btn.classList.add('onb-chip');
+    }
+  }
+}
+
+// Map a free-text reply to one of a choice step's option values.
+function matchChoice(step, value) {
+  const v = value.toLowerCase();
+  const hit = step.options.find(
+    (o) => o.value === v || o.label.toLowerCase() === v || v.includes(o.value)
+  );
+  if (hit) return hit.value;
+  if (step.key === 'address') {
+    if (/ma'?am|maam|miss|lady/.test(v)) return "ma'am";
+    if (/\b(name|first name|call me)\b/.test(v)) return 'name';
+    return 'sir';
+  }
+  if (step.key === 'responseStyle') {
+    if (/short|concise|brief|quick|to the point/.test(v)) return 'concise';
+    if (/detail|thorough|long|in.?depth|deep/.test(v)) return 'detailed';
+    return 'balanced';
+  }
+  return step.options[0].value;
+}
+
+function onboardingAnswer(raw) {
+  if (!onboarding) return;
+  // Lock prior choice chips so they can't be re-clicked into a later step.
+  document.querySelectorAll('.onb-chip').forEach((b) => (b.disabled = true));
+  const step = ONBOARD_STEPS[onboarding.step];
+  let value = String(raw || '').trim();
+  if (!value) {
+    askOnboardingStep();
+    return;
+  }
+  onboarding.answers[step.key] = step.type === 'choice' ? matchChoice(step, value) : value;
+  onboarding.step += 1;
+  if (onboarding.step >= ONBOARD_STEPS.length) finishOnboarding();
+  else setTimeout(askOnboardingStep, 350);
+}
+
+async function finishOnboarding() {
+  const answers = onboarding.answers;
+  onboarding = null;
+  input.placeholder = 'Speak or type a command, sir…';
+  const profile = {
+    name: answers.name || '',
+    address: answers.address || 'sir',
+    about: answers.about || '',
+    responseStyle: answers.responseStyle || 'balanced',
+  };
+  try {
+    const updated = await window.jarvis.completeOnboarding(profile);
+    if (updated) appSettings = updated;
+  } catch {
+    /* even if the save hiccups, don't trap the user in onboarding */
+  }
+  greeted = true;
+  const msg = `Wonderful — I've got it, ${addressTerm(profile)}. Systems online. How can I help?`;
+  addMessage('JARVIS', msg);
+  speak(msg, true);
+  setReactor('standby');
+}
+
+// ===================================================================
 // Main: handle a user utterance
 // ===================================================================
 async function handleUtterance(text) {
@@ -446,6 +589,12 @@ async function handleUtterance(text) {
   if (!text || busy) return;
   addMessage('YOU', text);
   input.value = '';
+
+  // During first-run onboarding, every reply is an answer to JARVIS's question.
+  if (onboarding) {
+    onboardingAnswer(text);
+    return;
+  }
 
   if (maybeWhatsNew(text)) {
     setReactor('standby');

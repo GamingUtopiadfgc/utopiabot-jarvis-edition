@@ -16,17 +16,59 @@ function applyTheme(key) {
   r.setProperty('--cyan-glow', `rgba(${t.rgb},0.55)`);
 }
 
+// ---- Build channel gating ----
+// VM / Danger Zone is a dangerous, dev-only feature — hide its nav entry unless
+// this is a Nightly build (its panel is unreachable without the nav button).
+if (!window.jarvis.dangerousFeatures) {
+  document.querySelector('.nav-item[data-sec="vm"]')?.style.setProperty('display', 'none');
+}
+if (window.jarvis.channel === 'nightly') {
+  const sub = document.querySelector('.brand-sub');
+  if (sub) sub.textContent = 'SETTINGS · NIGHTLY';
+}
+
 // ---- Section navigation ----
 const navItems = [...document.querySelectorAll('.nav-item')];
 const sections = [...document.querySelectorAll('.sec')];
 let systemTimer = null;
+let dangerZoneUnlocked = false; // confirmed once per settings session
+
+function switchSection(sec) {
+  const btn = navItems.find((b) => b.dataset.sec === sec);
+  navItems.forEach((b) => b.classList.toggle('active', b.dataset.sec === sec));
+  sections.forEach((s) => s.classList.toggle('active', s.dataset.sec === sec));
+  if (sec === 'system') startSystemPolling();
+  else stopSystemPolling();
+}
+
+function showDangerModal(onConfirm) {
+  $('dz-modal').style.display = 'flex';
+  // Replace buttons each time to avoid stacking listeners
+  ['dz-modal-confirm', 'dz-modal-cancel'].forEach((id) => {
+    const el = $(id);
+    const clone = el.cloneNode(true);
+    el.parentNode.replaceChild(clone, el);
+  });
+  $('dz-modal-confirm').addEventListener('click', () => {
+    $('dz-modal').style.display = 'none';
+    dangerZoneUnlocked = true;
+    onConfirm();
+  });
+  $('dz-modal-cancel').addEventListener('click', () => {
+    $('dz-modal').style.display = 'none';
+    switchSection('general');
+  });
+}
+
 navItems.forEach((btn) => {
   btn.addEventListener('click', () => {
     const sec = btn.dataset.sec;
-    navItems.forEach((b) => b.classList.toggle('active', b === btn));
-    sections.forEach((s) => s.classList.toggle('active', s.dataset.sec === sec));
-    if (sec === 'system') startSystemPolling();
-    else stopSystemPolling();
+    if (sec === 'vm' && window.jarvis.dangerousFeatures && !dangerZoneUnlocked) {
+      // Show the warning modal — only switch if confirmed
+      showDangerModal(() => switchSection('vm'));
+      return;
+    }
+    switchSection(sec);
   });
 });
 
@@ -222,6 +264,121 @@ document.querySelectorAll('#v-sttEngine input').forEach((r) =>
   r.addEventListener('change', (e) => showSttPanel(e.target.value))
 );
 
+// ---- VM / Danger Zone (SSH) ----
+
+// Intercept the enable checkbox — require explicit confirmation first.
+$('vm-enabled').addEventListener('change', (e) => {
+  if (e.target.checked) {
+    e.target.checked = false; // hold off until confirmed
+    $('vm-perm-card').style.display = '';
+    $('vm-perm-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+});
+$('vm-perm-allow').addEventListener('click', () => {
+  $('vm-enabled').checked = true;
+  $('vm-perm-card').style.display = 'none';
+});
+$('vm-perm-deny').addEventListener('click', () => {
+  $('vm-enabled').checked = false;
+  $('vm-perm-card').style.display = 'none';
+});
+
+// Auto-detect VMs on this machine.
+$('vm-detect-btn').addEventListener('click', async () => {
+  const btn = $('vm-detect-btn');
+  const status = $('vm-detect-status');
+  const results = $('vm-detect-results');
+  btn.disabled = true;
+  status.textContent = 'Scanning…';
+  results.style.display = 'none';
+
+  const data = await window.jarvis.detectVms().catch(() => null);
+  btn.disabled = false;
+
+  if (!data?.ok) {
+    status.textContent = data?.message || 'Detection failed.';
+    return;
+  }
+
+  let html = '';
+
+  if (data.runningInVm) {
+    html += `<div class="vm-detect-guest">
+      <span class="vm-detect-check">✓</span>
+      This machine is running inside a <strong>${data.vmPlatform}</strong> VM.
+      You can target the host OS by entering its bridge IP below.
+    </div>`;
+  }
+
+  if (data.hostedVms.length) {
+    status.textContent = `Found ${data.hostedVms.length} running VM${data.hostedVms.length > 1 ? 's' : ''}.`;
+    for (const vm of data.hostedVms) {
+      const safeIp   = vm.ip.replace(/"/g, '');
+      const safeName = vm.name.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      html += `
+        <div class="vm-detect-row">
+          <div class="vm-detect-info">
+            <div class="vm-detect-name">${safeName} <span class="soon">(${vm.hypervisor})</span></div>
+            ${vm.ip   ? `<div class="vm-detect-ip">${safeIp}:${vm.port}</div>` : ''}
+            ${vm.note ? `<div class="soon">${vm.note}</div>` : ''}
+          </div>
+          <button class="btn-mini vm-use-btn"
+            data-ip="${safeIp}"
+            data-port="${vm.port}"
+            data-name="${safeName.replace(/"/g, '&quot;')}">Use</button>
+        </div>`;
+    }
+  } else if (!data.runningInVm) {
+    status.textContent = 'No running VMs detected. Enter connection details manually.';
+  } else {
+    status.textContent = '';
+  }
+
+  if (html) {
+    results.innerHTML = html;
+    results.style.display = '';
+    results.querySelectorAll('.vm-use-btn').forEach((b) => {
+      b.addEventListener('click', () => {
+        if (b.dataset.ip)   $('vm-host').value = b.dataset.ip;
+        if (b.dataset.port) $('vm-port').value = b.dataset.port;
+        status.textContent = `Settings populated from "${b.dataset.name}".`;
+        results.style.display = 'none';
+      });
+    });
+  }
+});
+
+// Show only the password or private-key field for the chosen auth method.
+function showVmAuthPanel(method) {
+  document.querySelectorAll('.vm-auth').forEach((el) => {
+    el.style.display = el.dataset.auth === method ? '' : 'none';
+  });
+}
+
+document.querySelectorAll('#vm-authMethod input').forEach((r) =>
+  r.addEventListener('change', (e) => showVmAuthPanel(e.target.value))
+);
+
+$('vm-key-pick').addEventListener('click', async () => {
+  const file = await window.jarvis.pickFile();
+  if (file) $('vm-privateKeyPath').value = file;
+});
+
+$('vm-test').addEventListener('click', async () => {
+  const status = $('vm-test-status');
+  $('vm-test').disabled = true;
+  status.textContent = 'Connecting to the VM…';
+  try {
+    const res = await window.jarvis.testVmConnection(collect().vm);
+    status.textContent = res?.message || (res?.ok ? 'Connected.' : 'Connection failed.');
+    status.style.color = res?.ok ? 'var(--cyan)' : 'var(--danger)';
+  } catch (err) {
+    status.textContent = err?.message || 'Connection failed.';
+    status.style.color = 'var(--danger)';
+  }
+  $('vm-test').disabled = false;
+});
+
 async function loadModels(provider) {
   const sel = $('n-model');
   const current = sel.dataset.value || '';
@@ -244,6 +401,7 @@ async function loadModels(provider) {
     add(m, data.claude?.configured ? m : `${m} (no API key)`, !data.claude?.configured);
   } else {
     const models = data.ollama?.models || [];
+    installedModelIds = models; // keep pull picker in sync
     if (models.length) models.forEach((m) => add(m, m));
     else add('', data.ollama?.available ? 'no models pulled' : 'server offline', true);
   }
@@ -254,7 +412,9 @@ async function loadModels(provider) {
 }
 
 // ---- Load settings into the form ----
+let appSettings = null;
 function populate(s) {
+  appSettings = s;
   // General
   $('g-startWithWindows').checked = s.general.startWithWindows;
   $('g-minimizeToTray').checked = s.general.minimizeToTray;
@@ -310,6 +470,18 @@ function populate(s) {
   $('a-requireApproval').checked = s.automation.requireApproval;
   const sl = document.querySelector(`#a-securityLevel input[value="${s.automation.securityLevel}"]`);
   if (sl) sl.checked = true;
+
+  // VM / Danger Zone
+  $('vm-enabled').checked = s.vm.enabled;
+  $('vm-host').value = s.vm.host;
+  $('vm-port').value = s.vm.port;
+  $('vm-username').value = s.vm.username;
+  const vmAuth = document.querySelector(`#vm-authMethod input[value="${s.vm.authMethod}"]`);
+  if (vmAuth) vmAuth.checked = true;
+  $('vm-password').value = s.vm.password;
+  $('vm-privateKeyPath').value = s.vm.privateKeyPath;
+  $('vm-allowUnattended').checked = s.vm.allowUnattended;
+  showVmAuthPanel(s.vm.authMethod);
 
   // Appearance
   const th = document.querySelector(`#ap-theme input[value="${s.appearance.theme}"]`);
@@ -376,6 +548,16 @@ function collect() {
       browserControl: $('a-browserControl').checked,
       requireApproval: $('a-requireApproval').checked,
       securityLevel: radio('a-securityLevel') || 'normal',
+    },
+    vm: {
+      enabled: $('vm-enabled').checked,
+      host: $('vm-host').value.trim(),
+      port: parseInt($('vm-port').value, 10) || 22,
+      username: $('vm-username').value.trim(),
+      authMethod: radio('vm-authMethod') || 'password',
+      password: $('vm-password').value,
+      privateKeyPath: $('vm-privateKeyPath').value.trim(),
+      allowUnattended: $('vm-allowUnattended').checked,
     },
     appearance: {
       theme: radio('ap-theme') || 'jarvis',
@@ -491,13 +673,179 @@ function stopSystemPolling() {
   }
 }
 
-// ---- Pull model (Ollama only) ----
+// ---- Pull model — curated dropdown with install-status + dependency check ----
 let isPulling = false;
+let pullPickerSelected = null;
+let pullPanelOpen = false;
+let installedModelIds = [];
+
+const CURATED_MODELS = [
+  { id: 'llama3.2:1b',      label: 'Llama 3.2 1B',       size: '1.3 GB', desc: 'Ultra-fast, lowest memory footprint' },
+  { id: 'llama3.2:3b',      label: 'Llama 3.2 3B',       size: '2.0 GB', desc: 'Fast — great for daily use' },
+  { id: 'llama3.1:8b',      label: 'Llama 3.1 8B',       size: '4.7 GB', desc: 'Well-rounded general purpose' },
+  { id: 'llama3.1:70b',     label: 'Llama 3.1 70B',      size: '40 GB',  desc: 'High capability — needs powerful GPU' },
+  { id: 'mistral:latest',   label: 'Mistral 7B',          size: '4.1 GB', desc: 'Fast and smart — great all-rounder' },
+  { id: 'gemma2:2b',        label: 'Gemma 2 2B',          size: '1.6 GB', desc: "Google's compact model" },
+  { id: 'gemma2:9b',        label: 'Gemma 2 9B',          size: '5.5 GB', desc: "Google's balanced model" },
+  { id: 'qwen2.5:3b',       label: 'Qwen 2.5 3B',         size: '1.9 GB', desc: 'Great at coding and multilingual' },
+  { id: 'qwen2.5:7b',       label: 'Qwen 2.5 7B',         size: '4.4 GB', desc: 'Strong coder — Alibaba' },
+  { id: 'codellama:7b',     label: 'Code Llama 7B',       size: '3.8 GB', desc: 'Meta — specialized for code' },
+  { id: 'phi3.5',           label: 'Phi-3.5 Mini 3.8B',   size: '2.2 GB', desc: "Microsoft's efficient small model" },
+  { id: 'deepseek-r1:1.5b', label: 'DeepSeek R1 1.5B',   size: '1.1 GB', desc: 'Tiny reasoning model' },
+  { id: 'deepseek-r1:7b',   label: 'DeepSeek R1 7B',      size: '4.7 GB', desc: 'Reasoning with chain-of-thought' },
+  { id: 'deepseek-r1:14b',  label: 'DeepSeek R1 14B',     size: '9.0 GB', desc: 'High-quality reasoning model' },
+];
 
 function togglePullField(provider) {
-  const field = $('n-pull-field');
-  field.style.display = provider === 'ollama' ? '' : 'none';
+  $('n-pull-field').style.display = provider === 'ollama' ? '' : 'none';
 }
+
+function buildPullPanel() {
+  const panel = $('n-pull-panel');
+  panel.innerHTML = '';
+  const inst = CURATED_MODELS.filter((m) => installedModelIds.includes(m.id));
+  const avail = CURATED_MODELS.filter((m) => !installedModelIds.includes(m.id));
+
+  if (inst.length) {
+    const h = document.createElement('div');
+    h.className = 'mpick-section-header';
+    h.textContent = 'Installed';
+    panel.appendChild(h);
+    inst.forEach((m) => panel.appendChild(makePullItem(m, true)));
+  }
+
+  const h2 = document.createElement('div');
+  h2.className = 'mpick-section-header';
+  h2.textContent = inst.length ? 'Available to pull' : 'Popular models';
+  panel.appendChild(h2);
+  avail.forEach((m) => panel.appendChild(makePullItem(m, false)));
+}
+
+function makePullItem(m, installed) {
+  const el = document.createElement('div');
+  el.className = 'mpick-item' + (pullPickerSelected?.id === m.id ? ' selected' : '');
+  el.innerHTML = `
+    <span class="mpick-item-status ${installed ? 'mpick-item-status--ok' : 'mpick-item-status--pull'}">${installed ? '✓' : '⬇'}</span>
+    <div class="mpick-item-info">
+      <div class="mpick-item-name">${m.label}</div>
+      <div class="mpick-item-desc">${m.desc}</div>
+    </div>
+    <span class="mpick-item-size">${m.size}</span>
+  `;
+  el.addEventListener('click', () => selectPullModel(m, installed));
+  return el;
+}
+
+function selectPullModel(m, installed) {
+  pullPickerSelected = { ...m, installed };
+  closePullPanel();
+
+  $('n-pull-label').textContent = m.label;
+  $('n-pull-badge').textContent = installed ? 'INSTALLED' : m.size;
+  $('n-pull-badge').className = `mpick-badge ${installed ? 'mpick-badge--ok' : 'mpick-badge--pull'}`;
+
+  // Clear all sub-areas
+  ['n-dep-status', 'n-dep-progress', 'n-pull-progress', 'n-pull-confirm', 'n-pull-already']
+    .forEach((id) => { $( id).style.display = 'none'; });
+
+  if (installed) {
+    $('n-pull-already').textContent = `✓ ${m.label} is already installed and ready to use.`;
+    $('n-pull-already').style.display = '';
+  } else {
+    $('n-pull-confirm').innerHTML = `
+      <span>${m.label} <span class="soon">(${m.size})</span> is not installed.</span>
+      <button id="n-pull-yes" class="btn-mini">Pull &amp; Install</button>
+      <button id="n-pull-cancel-btn" class="btn-mini btn-ghost-mini">Cancel</button>
+    `;
+    $('n-pull-confirm').style.display = 'flex';
+    $('n-pull-yes').addEventListener('click', startPull);
+    $('n-pull-cancel-btn').addEventListener('click', cancelPull);
+  }
+}
+
+function closePullPanel() {
+  $('n-pull-panel').style.display = 'none';
+  pullPanelOpen = false;
+}
+
+function cancelPull() {
+  pullPickerSelected = null;
+  $('n-pull-label').textContent = 'Choose a model to pull…';
+  $('n-pull-badge').textContent = '';
+  $('n-pull-badge').className = 'mpick-badge mpick-badge--none';
+  $('n-pull-confirm').style.display = 'none';
+  $('n-dep-status').style.display = 'none';
+}
+
+async function startPull() {
+  if (isPulling || !pullPickerSelected) return;
+  const model = pullPickerSelected.id;
+
+  // Step 1 — check Ollama is available (dependency check)
+  let ollamaOk = false;
+  try {
+    const data = await window.jarvis.listModels();
+    ollamaOk = !!data.ollama?.available;
+  } catch { /* assume offline */ }
+
+  $('n-pull-confirm').style.display = 'none';
+
+  if (!ollamaOk) {
+    const dep = $('n-dep-status');
+    dep.innerHTML = `
+      <span style="color:var(--danger)">⚠ Ollama is not running or not installed.</span>
+      <button id="n-dep-install-btn" class="btn-mini">Install Ollama</button>
+      <button id="n-dep-retry-btn" class="btn-mini btn-ghost-mini">Retry</button>
+    `;
+    dep.style.display = 'flex';
+    $('n-dep-install-btn').addEventListener('click', installOllama);
+    $('n-dep-retry-btn').addEventListener('click', () => {
+      dep.style.display = 'none';
+      $('n-pull-confirm').style.display = 'flex';
+    });
+    return;
+  }
+
+  // Step 2 — pull the model
+  isPulling = true;
+  const yesBtn = $('n-pull-yes');
+  if (yesBtn) yesBtn.disabled = true;
+  $('n-pull-progress').textContent = `Pulling ${model}…`;
+  $('n-pull-progress').style.display = '';
+  await window.jarvis.pullModel(model);
+}
+
+async function installOllama() {
+  $('n-dep-status').style.display = 'none';
+  const prog = $('n-dep-progress');
+  prog.style.display = '';
+  prog.textContent = 'Starting Ollama installation…';
+  const result = await window.jarvis.installOllama();
+  if (result?.ok) {
+    prog.textContent = 'Ollama installed and running. Click Pull & Install to continue.';
+    $('n-pull-confirm').style.display = 'flex';
+  } else {
+    prog.textContent =
+      'Automatic install did not complete — install Ollama manually from https://ollama.com/download';
+  }
+}
+
+// Open/close the picker panel, refreshing the installed list on each open.
+$('n-pull-trigger').addEventListener('click', async (e) => {
+  e.stopPropagation();
+  if (pullPanelOpen) { closePullPanel(); return; }
+  try {
+    const data = await window.jarvis.listModels();
+    installedModelIds = data.ollama?.models || [];
+  } catch { installedModelIds = []; }
+  buildPullPanel();
+  $('n-pull-panel').style.display = '';
+  pullPanelOpen = true;
+});
+
+document.addEventListener('click', (e) => {
+  if (pullPanelOpen && !$('n-pull-wrap').contains(e.target)) closePullPanel();
+});
 
 $('n-provider').addEventListener('change', (e) => {
   $('n-model').dataset.value = '';
@@ -506,45 +854,41 @@ $('n-provider').addEventListener('change', (e) => {
 });
 
 $('n-refresh').addEventListener('click', () => {
-  if (appSettings) {
-    loadModels(appSettings.neural.provider);
-  }
+  if (appSettings) loadModels(appSettings.neural.provider);
 });
 
-$('n-pull-btn').addEventListener('click', async () => {
-  if (isPulling) return;
-  const model = $('n-pull-input').value.trim();
-  if (!model) {
-    $('n-pull-progress').textContent = 'Enter a model name first, sir.';
-    $('n-pull-progress').style.display = '';
-    return;
-  }
-
-  isPulling = true;
-  $('n-pull-btn').textContent = 'Pulling…';
-  $('n-pull-btn').disabled = true;
-  $('n-pull-progress').style.display = '';
-  $('n-pull-progress').textContent = `Pulling ${model}…`;
-
-  await window.jarvis.pullModel(model);
-
-  // Progress updates come over IPC now
+// Ollama install progress (broadcast from main process during installation)
+window.jarvis.onInstallProgress?.(({ status }) => {
+  const el = $('n-dep-progress');
+  if (el && status) { el.style.display = ''; el.textContent = status; }
 });
 
-// Listen for pull progress from the main process
+// Pull progress from main process
 window.jarvis.onPullProgress?.(({ model, status }) => {
-  $('n-pull-progress').textContent = status;
   $('n-pull-progress').style.display = '';
+  $('n-pull-progress').textContent = status;
 
-  // If status indicates completion or error, re-enable the button
   if (/✓ .+ ready/.test(status) || /error|failed|not found/i.test(status)) {
     isPulling = false;
-    $('n-pull-btn').textContent = 'Pull';
-    $('n-pull-btn').disabled = false;
-    // Refresh models on success
+    const yesBtn = $('n-pull-yes');
+    if (yesBtn) yesBtn.disabled = false;
+
     if (/✓ .+ ready/.test(status)) {
-      loadModels('ollama');
-      $('n-pull-input').value = '';
+      // Refresh the model selector and rebuild the pull panel with new installed set
+      window.jarvis.listModels().then((data) => {
+        installedModelIds = data.ollama?.models || [];
+        buildPullPanel();
+        if (appSettings) loadModels(appSettings.neural.provider);
+      }).catch(() => {});
+      // Update the trigger to show INSTALLED badge
+      if (pullPickerSelected?.id === model) {
+        pullPickerSelected.installed = true;
+        $('n-pull-badge').textContent = 'INSTALLED';
+        $('n-pull-badge').className = 'mpick-badge mpick-badge--ok';
+        $('n-pull-confirm').style.display = 'none';
+        $('n-pull-already').textContent = `✓ ${pullPickerSelected.label} installed successfully.`;
+        $('n-pull-already').style.display = '';
+      }
     }
   }
 });

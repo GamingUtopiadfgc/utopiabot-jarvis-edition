@@ -136,9 +136,15 @@ function parseToolCall(text, names = TOOLS.map((t) => t.name)) {
     }
     const call = Array.isArray(obj) ? obj[0] : obj;
     if (!call || typeof call !== 'object') continue;
-    const name = call.name || call.tool || call.function?.name;
+
+    // `function` field can be a string ("list_files") or an object ({ name, arguments })
+    const rawFn = call.function;
+    const fnName = typeof rawFn === 'string' ? rawFn : rawFn?.name;
+    const name = call.name || call.tool || fnName;
+
     let args =
-      call.arguments || call.parameters || call.args || call.function?.arguments || {};
+      call.arguments || call.parameters || call.args ||
+      (typeof rawFn === 'object' ? rawFn?.arguments || rawFn?.parameters : null) || {};
     if (typeof args === 'string') {
       try {
         args = JSON.parse(args);

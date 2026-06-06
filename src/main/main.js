@@ -44,6 +44,9 @@ const { runCommand } = require('./commands');
 const settingsStore = require('./settings');
 const { getStats } = require('./system');
 const { createMemory } = require('./memory');
+const { buildProfileBlock } = require('./persona');
+const { testConnection: testVmConnection, detectVms } = require('./vm');
+const { dangerousFeaturesEnabled } = require('./channel');
 const { extractMemories } = require('./learner');
 const tts = require('./tts');
 const stt = require('./stt');
@@ -97,9 +100,13 @@ function buildToolContext() {
     caps: {
       powershell:
         settings.automation.powershell || settings.automation.desktopControl,
+      // VM control is a dangerous feature — only honored in the Nightly build.
+      vm: settings.vm.enabled && dangerousFeaturesEnabled,
       memory: settings.memory.longTerm,
     },
     approve: approveCommand,
+    vmConfig: settings.vm,
+    vmUnattended: settings.vm.allowUnattended,
     memory: settings.memory.longTerm ? memory : null,
   };
 }
@@ -286,8 +293,14 @@ ipcMain.handle(
       }
     };
 
-    // Inject long-term memory relevant to the latest user turn.
+    // Tell the brain who it's helping (name, address, style) once onboarded.
     const opts = { ...(options || {}) };
+    if (settings.profile?.onboarded) {
+      const block = buildProfileBlock(settings.profile);
+      if (block) opts.userProfile = block;
+    }
+
+    // Inject long-term memory relevant to the latest user turn.
     if (settings.memory.longTerm) {
       const lastUser = [...messages].reverse().find((m) => m.role === 'user');
       const q = typeof lastUser?.content === 'string' ? lastUser.content : '';
@@ -388,6 +401,26 @@ ipcMain.handle('settings:reset', () => {
 ipcMain.handle('settings:open', () => openSettings());
 ipcMain.handle('settings:close', () => settingsWin?.close());
 
+// ---- IPC: first-run onboarding ----
+// Persist the captured profile (marking onboarding done) and seed long-term
+// memory with durable facts so JARVIS recalls them even outside the profile block.
+ipcMain.handle('onboarding:complete', (_e, profile = {}) => {
+  settings = settingsStore.save({ profile: { ...profile, onboarded: true } });
+  try {
+    const p = settings.profile;
+    if (p.name) memory.add(`The user's name is ${p.name}.`);
+    if (p.about && p.about.trim()) memory.add(`About the user: ${p.about.trim()}`);
+    const addr =
+      p.address === 'name' && p.name ? `their name, ${p.name}` : `"${p.address}"`;
+    memory.add(`The user prefers to be addressed as ${addr}.`);
+  } catch (err) {
+    console.error('onboarding memory seed failed:', err);
+  }
+  applySideEffects(settings);
+  mainWindow?.webContents.send('settings:changed', settings);
+  return settings;
+});
+
 // ---- IPC: pull an Ollama model ----
 ipcMain.handle('ollama:pull', async (_event, { model, progressPort }) => {
   // If a progressPort is provided, we send progress updates via that channel.
@@ -470,6 +503,31 @@ ipcMain.handle('dialog:pickFolder', async () => {
     properties: ['openDirectory'],
   });
   return res.canceled ? '' : res.filePaths[0];
+});
+ipcMain.handle('dialog:pickFile', async () => {
+  const res = await dialog.showOpenDialog(settingsWin || mainWindow, {
+    properties: ['openFile'],
+  });
+  return res.canceled ? '' : res.filePaths[0];
+});
+
+// ---- IPC: VM (Danger Zone) — test an SSH connection from entered settings ----
+ipcMain.handle('vm:test', (_event, cfg) => {
+  if (!dangerousFeaturesEnabled)
+    return { ok: false, message: 'VM control is only available in the Nightly build, sir.' };
+  return testVmConnection(cfg);
+});
+
+// ---- IPC: VM (Danger Zone) — auto-detect hypervisors + running VMs ----
+ipcMain.handle('vm:detect', async () => {
+  if (!dangerousFeaturesEnabled)
+    return { ok: false, message: 'VM detection is only available in the Nightly build, sir.' };
+  try {
+    const data = await detectVms();
+    return { ok: true, ...data };
+  } catch (err) {
+    return { ok: false, message: err.message || String(err) };
+  }
 });
 
 // ---- IPC: local commands (open apps, time, search, etc.) ----

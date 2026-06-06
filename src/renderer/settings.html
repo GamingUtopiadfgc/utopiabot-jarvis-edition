@@ -28,6 +28,7 @@
         <button class="nav-item" data-sec="neural">Neural Core</button>
         <button class="nav-item" data-sec="memory">Memory Bank</button>
         <button class="nav-item" data-sec="automation">Automation</button>
+        <button class="nav-item nav-danger" data-sec="vm">VM / Danger Zone</button>
         <button class="nav-item" data-sec="appearance">Appearance</button>
         <button class="nav-item" data-sec="system">System</button>
         <button class="nav-item" data-sec="advanced">Advanced</button>
@@ -132,12 +133,25 @@
             </div>
           </div>
           <div class="field" id="n-pull-field" style="display:none">
-            <label>Pull Model</label>
-            <div class="row">
-              <input type="text" id="n-pull-input" class="txt" placeholder="e.g. llama3.2:3b" />
-              <button id="n-pull-btn" class="btn-mini">Pull</button>
+            <label>Pull Model <i class="soon">(download from the Ollama library)</i></label>
+            <div class="mpick-wrap" id="n-pull-wrap">
+              <button class="mpick-trigger" id="n-pull-trigger" type="button">
+                <span id="n-pull-label">Choose a model to pull…</span>
+                <span id="n-pull-badge" class="mpick-badge mpick-badge--none"></span>
+                <span class="mpick-chevron">▾</span>
+              </button>
+              <div class="mpick-panel" id="n-pull-panel" style="display:none"></div>
             </div>
-            <div id="n-pull-progress" class="pull-progress" style="display:none"></div>
+            <!-- Dependency / Ollama-not-running warning + install offer -->
+            <div id="n-dep-status" class="dep-status" style="display:none; margin-top:8px"></div>
+            <!-- "Pull & Install" confirm row, shown after selecting an uninstalled model -->
+            <div id="n-pull-confirm" class="mpick-install-prompt" style="display:none; margin-top:8px"></div>
+            <!-- "Already installed" feedback -->
+            <div id="n-pull-already" class="soon" style="display:none; margin-top:6px; color:var(--cyan)"></div>
+            <!-- Ollama dependency install progress -->
+            <div id="n-dep-progress" class="pull-progress" style="display:none; margin-top:6px"></div>
+            <!-- Model pull progress -->
+            <div id="n-pull-progress" class="pull-progress" style="display:none; margin-top:6px"></div>
           </div>
           <div class="field">
             <label>Temperature <b id="n-temp-val">0.7</b> <i class="soon">(Ollama only)</i></label>
@@ -193,6 +207,79 @@
               <label><input type="radio" name="a-securityLevel" value="normal" /><span>Normal</span></label>
               <label><input type="radio" name="a-securityLevel" value="developer" /><span>Developer</span></label>
             </div>
+          </div>
+        </section>
+
+        <!-- VM / DANGER ZONE -->
+        <section class="sec danger-zone" data-sec="vm">
+          <h2>VM / Danger Zone <i class="soon danger-note">⚠ lets the bot run commands on a remote machine over SSH</i></h2>
+
+          <!-- Enable toggle + permission confirmation card -->
+          <label class="chk"><input type="checkbox" id="vm-enabled" /><span>Enable VM Control <i class="soon">(exposes the run_vm_command tool to the AI)</i></span></label>
+          <div id="vm-perm-card" class="vm-perm-card" style="display:none">
+            <div class="vm-perm-title">⚠ Confirm VM Access</div>
+            <div class="vm-perm-body">
+              Enabling this gives JARVIS the ability to execute arbitrary shell commands on a remote machine over SSH.
+              Only proceed if you own and trust the target host.
+            </div>
+            <div class="vm-perm-actions">
+              <button id="vm-perm-allow" class="btn-mini">I Understand — Enable</button>
+              <button id="vm-perm-deny" class="btn-mini btn-ghost-mini">Cancel</button>
+            </div>
+          </div>
+
+          <!-- Auto-detect -->
+          <div class="field">
+            <label>Auto-Detect</label>
+            <div class="row">
+              <button id="vm-detect-btn" class="btn-mini">⟳ Scan for VMs</button>
+              <span id="vm-detect-status" class="soon" style="line-height:28px; margin-left:4px"></span>
+            </div>
+            <div id="vm-detect-results" style="display:none; margin-top:10px"></div>
+          </div>
+          <div class="field">
+            <label>Host</label>
+            <input type="text" id="vm-host" class="txt" placeholder="192.168.1.50 or vm.local" />
+          </div>
+          <div class="field">
+            <label>Port</label>
+            <input type="number" id="vm-port" class="txt num" min="1" max="65535" placeholder="22" />
+          </div>
+          <div class="field">
+            <label>Username</label>
+            <input type="text" id="vm-username" class="txt" placeholder="root" />
+          </div>
+          <div class="field">
+            <label>Authentication</label>
+            <div class="radios" id="vm-authMethod">
+              <label><input type="radio" name="vm-authMethod" value="password" /><span>Password</span></label>
+              <label><input type="radio" name="vm-authMethod" value="key" /><span>Private Key</span></label>
+            </div>
+          </div>
+
+          <!-- Password auth -->
+          <div class="field vm-auth" data-auth="password">
+            <label>Password <i class="soon">(stored in plaintext in settings.json)</i></label>
+            <input type="password" id="vm-password" class="txt" autocomplete="off" />
+          </div>
+
+          <!-- Key auth -->
+          <div class="field vm-auth" data-auth="key">
+            <label>Private Key File</label>
+            <div class="row">
+              <input type="text" id="vm-privateKeyPath" class="txt" placeholder="C:\Users\you\.ssh\id_ed25519" />
+              <button id="vm-key-pick" class="btn-mini">Browse</button>
+            </div>
+          </div>
+
+          <label class="chk"><input type="checkbox" id="vm-allowUnattended" /><span>Allow Unattended VM Commands <i class="soon danger-note">⚠ skips the approval dialog — the bot runs VM commands without asking</i></span></label>
+
+          <div class="field">
+            <label>Connection</label>
+            <div class="row">
+              <button id="vm-test" class="btn-mini">Test Connection</button>
+            </div>
+            <div id="vm-test-status" class="soon" style="margin-top:6px"></div>
           </div>
         </section>
 
@@ -270,6 +357,24 @@
       <button id="s-close" class="btn-ghost">CLOSE</button>
       <button id="s-save" class="btn-primary">SAVE CONFIGURATION</button>
     </footer>
+
+    <!-- Danger Zone entry-warning modal (Nightly only) -->
+    <div id="dz-modal" class="dz-modal" style="display:none" role="dialog" aria-modal="true">
+      <div class="dz-modal-box">
+        <div class="dz-modal-icon">⚠</div>
+        <div class="dz-modal-title">Danger Zone</div>
+        <div class="dz-modal-body">
+          <p>These settings let UtopiaBot execute shell commands on a remote machine over SSH — effectively giving it <strong>full control of that system</strong>.</p>
+          <div class="dz-modal-safety">
+            <strong>Safety recommendation:</strong> if you are testing this feature, run it inside a <strong>virtual machine</strong>, not on your main PC. That way, even if something goes wrong, your real system stays safe.
+          </div>
+        </div>
+        <div class="dz-modal-actions">
+          <button id="dz-modal-confirm" class="btn-mini">I Understand — Enter Danger Zone</button>
+          <button id="dz-modal-cancel" class="btn-ghost">Take Me Back to Safety</button>
+        </div>
+      </div>
+    </div>
 
     <script src="audio.js"></script>
     <script src="settings-renderer.js"></script>

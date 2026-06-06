@@ -54,7 +54,7 @@ function createBrain() {
      * @param {Array<{role: 'user'|'assistant', content: any}>} messages
      * @param {{model?: string, onText: (t: string) => void, onDone: (full: string) => void, onError: (m: string) => void, onTool?: (name: string) => void}} cbs
      */
-    async streamReply(messages, { model, options = {}, toolCtx = {}, onText, onDone, onError, onTool }) {
+    async streamReply(messages, { model, options = {}, toolCtx = {}, onText, onDone, onError, onTool, onReset }) {
       if (!client) {
         onError(
           'My brain is offline, sir — no API key configured. Add ANTHROPIC_API_KEY to a .env file and restart.'
@@ -67,6 +67,7 @@ function createBrain() {
       let systemText = options.systemPrompt?.trim()
         ? options.systemPrompt
         : SYSTEM_PROMPT;
+      if (options.userProfile) systemText += `\n\n${options.userProfile}`;
       if (options.memoryContext)
         systemText += `\n\nThings you remember about the user:\n${options.memoryContext}`;
       const maxTokens = Number(options.maxTokens) > 0 ? Number(options.maxTokens) : 4096;
@@ -79,6 +80,7 @@ function createBrain() {
 
       try {
         for (let step = 0; step < MAX_TOOL_STEPS; step++) {
+          let stepHadText = false;
           const stream = client.messages.stream({
             model: model || DEFAULT_MODEL,
             max_tokens: maxTokens,
@@ -94,10 +96,12 @@ function createBrain() {
             messages: working,
           });
 
-          stream.on('text', (delta) => onText(delta));
+          stream.on('text', (delta) => { stepHadText = true; onText(delta); });
           const final = await stream.finalMessage();
 
           if (final.stop_reason === 'tool_use') {
+            // Clear any preamble text that streamed before the tool block.
+            if (stepHadText) onReset?.();
             working.push({ role: 'assistant', content: final.content });
             const results = [];
             for (const block of final.content) {

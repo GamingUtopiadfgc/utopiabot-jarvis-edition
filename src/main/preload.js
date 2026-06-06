@@ -1,10 +1,15 @@
 'use strict';
 
 const { contextBridge, ipcRenderer } = require('electron');
+const { CHANNEL, dangerousFeaturesEnabled } = require('./channel');
 
 // A small, explicit, safe surface exposed to the renderer.
 // The renderer can NOT touch Node directly — only these methods.
 contextBridge.exposeInMainWorld('jarvis', {
+  // Build channel (static, available immediately — no IPC round-trip needed).
+  channel: CHANNEL,
+  dangerousFeatures: dangerousFeaturesEnabled,
+
   // Window chrome
   minimize: () => ipcRenderer.send('window:minimize'),
   toggleMaximize: () => ipcRenderer.send('window:toggle-maximize'),
@@ -69,6 +74,10 @@ contextBridge.exposeInMainWorld('jarvis', {
   onSettingsChanged: (cb) =>
     ipcRenderer.on('settings:changed', (_e, s) => cb(s)),
 
+  // First-run onboarding: persist the captured user profile.
+  completeOnboarding: (profile) =>
+    ipcRenderer.invoke('onboarding:complete', profile),
+
   // Neural TTS engines (Piper / Coqui)
   ttsState: () => ipcRenderer.invoke('tts:state'),
   installTts: (engine) => ipcRenderer.invoke('tts:install', { engine }),
@@ -85,7 +94,12 @@ contextBridge.exposeInMainWorld('jarvis', {
   sttTranscribe: (audio, model, language) =>
     ipcRenderer.invoke('stt:transcribe', { audio, model, language }),
 
+  // VM (Danger Zone) — test an SSH connection / auto-detect VMs
+  testVmConnection: (cfg) => ipcRenderer.invoke('vm:test', cfg),
+  detectVms: () => ipcRenderer.invoke('vm:detect'),
+
   // System + dialogs
   getSystemStats: () => ipcRenderer.invoke('system:stats'),
   pickFolder: () => ipcRenderer.invoke('dialog:pickFolder'),
+  pickFile: () => ipcRenderer.invoke('dialog:pickFile'),
 });

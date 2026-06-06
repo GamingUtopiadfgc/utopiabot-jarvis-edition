@@ -7,14 +7,17 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
+    "dev:nightly": "node build/dev-nightly.js",
     "icon": "node build/make-icon.js",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
+    "build:daily": "node build/build.js daily",
+    "build:nightly": "node build/build.js nightly",
     "release": "npm run release:patch",
-    "release:patch": "npm version patch -m \"Release v%s\" && npm run publish",
-    "release:minor": "npm version minor -m \"Release v%s\" && npm run publish",
-    "release:major": "npm version major -m \"Release v%s\" && npm run publish",
-    "publish": "electron-builder --publish always && git push --follow-tags"
+    "release:patch": "npm version patch -m \"Release v%s\" && npm run publish:daily",
+    "release:minor": "npm version minor -m \"Release v%s\" && npm run publish:daily",
+    "release:major": "npm version major -m \"Release v%s\" && npm run publish:daily",
+    "publish:daily": "node build/build.js daily --publish && git push --follow-tags"
   },
   "keywords": [
     "jarvis",
@@ -28,11 +31,12 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.65.0",
     "dotenv": "^16.4.7",
-    "electron-updater": "^6.3.9"
+    "electron-updater": "^6.3.9",
+    "ssh2": "^1.17.0"
   },
   "devDependencies": {
-    "electron": "^33.2.1",
-    "electron-builder": "^25.1.8"
+    "electron": "^42.3.3",
+    "electron-builder": "^26.8.1"
   },
   "build": {
     "appId": "com.utopiabot.jarvis",
