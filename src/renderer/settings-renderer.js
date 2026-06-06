@@ -174,8 +174,12 @@ function wireTtsEngine(engine, installId, testId, statusId, selectId) {
     }
   });
   $(testId).addEventListener('click', async () => {
-    $(statusId).textContent = 'Synthesizing test…';
+    $(testId).disabled = true;
+    $(statusId).textContent = engine === 'coqui'
+      ? 'Synthesizing… (first run may download model — up to several minutes)'
+      : 'Synthesizing test…';
     const res = await window.jarvis.ttsSynth(engine, 'All systems online, sir.', $(selectId).value);
+    $(testId).disabled = false;
     if (res?.ok && res.dataUrl) {
       new Audio(res.dataUrl).play().catch(() => {});
       $(statusId).textContent = 'Playing test.';
@@ -672,6 +676,41 @@ function stopSystemPolling() {
     systemTimer = null;
   }
 }
+
+$('sys-export-log').addEventListener('click', async () => {
+  const btn = $('sys-export-log');
+  const status = $('sys-log-status');
+  btn.disabled = true;
+  status.textContent = 'Saving…';
+  const res = await window.jarvis.exportLogs();
+  btn.disabled = false;
+  if (res?.cancelled) {
+    status.textContent = '';
+  } else if (res?.ok) {
+    status.textContent = 'Log saved.';
+    setTimeout(() => { status.textContent = ''; }, 4000);
+  } else {
+    status.textContent = res?.error || 'Export failed.';
+  }
+});
+
+$('sys-report-log').addEventListener('click', async () => {
+  const btn = $('sys-report-log');
+  const status = $('sys-log-status');
+  btn.disabled = true;
+  status.textContent = 'Sending…';
+  const res = await window.jarvis.reportLogs();
+  btn.disabled = false;
+  if (res?.ok && res.url) {
+    status.textContent = 'Issue created.';
+    setTimeout(() => { status.textContent = ''; }, 6000);
+  } else if (res?.ok && res.opened) {
+    status.textContent = 'Browser opened — fill in details and submit.';
+    setTimeout(() => { status.textContent = ''; }, 8000);
+  } else {
+    status.textContent = res?.error || 'Failed.';
+  }
+});
 
 // ---- Pull model — curated dropdown with install-status + dependency check ----
 let isPulling = false;

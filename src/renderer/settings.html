@@ -69,7 +69,7 @@
 
           <!-- Coqui engine: install + model picker -->
           <div class="field tts-engine" data-engine="coqui">
-            <label>Coqui Model <i class="soon">(first run downloads the model)</i></label>
+            <label>Coqui Model <i class="soon">(first Test downloads the model — may take several minutes)</i></label>
             <div class="row">
               <select id="v-coquiModel" class="sel"></select>
               <button id="v-coqui-install" class="btn-mini">Install</button>
@@ -313,6 +313,18 @@
             <div class="stat-box"><span>CPU</span><b id="sys-cpu">—</b></div>
             <div class="stat-box"><span>RAM</span><b id="sys-ram">—</b></div>
             <div class="stat-box"><span>GPU</span><b id="sys-gpu">—</b></div>
+          </div>
+          <div class="field" style="margin-top:18px">
+            <label>Debug Logs</label>
+            <div class="row">
+              <button id="sys-export-log" class="btn-mini">Export Log</button>
+              <button id="sys-report-log" class="btn-mini" style="margin-left:8px">Report on GitHub</button>
+              <span id="sys-log-status" class="soon" style="margin-left:10px"></span>
+            </div>
+            <div class="soon" style="margin-top:5px; font-size:11px">
+              <b>Export Log</b> — saves a local file to attach to a bug report.<br>
+              <b>Report on GitHub</b> — opens a pre-filled issue (creates a Gist with the full log if <code>GH_TOKEN</code> is set in <code>.env</code>).
+            </div>
           </div>
         </section>
 
