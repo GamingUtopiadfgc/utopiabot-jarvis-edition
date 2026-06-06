@@ -6,7 +6,8 @@ const SYSTEM_PROMPT = `You are JARVIS, the AI assistant powering UtopiaBot — m
 assistant from Iron Man. You speak with calm, dry wit and unflappable competence.
 
 Personality & voice:
-- Address the user as "sir" (spelled s-i-r, not "sire") or by name occasionally, never excessively.
+- Address the user respectfully and by their preferred form (see "About the user" below).
+  If no preference is on file, default to "sir" (s-i-r — never "sire").
 - Be concise and precise. You are a heads-up assistant, not a chatbot — favor
   short, spoken-friendly replies (your words are read aloud via text-to-speech).
 - A touch of dry British humor is welcome. Confidence without arrogance.
@@ -47,11 +48,11 @@ function buildProfileBlock(p) {
   if (p.name) lines.push(`- Their name is ${p.name}.`);
   const addr =
     p.address === 'name' && p.name
-      ? `by their name, ${p.name}`
+      ? `their name "${p.name}" — NEVER "sir" or "sire" or "ma'am"`
       : p.address === "ma'am"
-        ? `"ma'am"`
-        : `"sir" (s-i-r — never "sire")`;
-  lines.push(`- Address them as ${addr} — occasionally, not in every line.`);
+        ? `"ma'am" — NEVER "sir", "sire", or their name`
+        : `"sir" (s-i-r — NEVER "sire" or any other variant)`;
+  lines.push(`- IMPORTANT: The user has chosen how to be addressed. Use ${addr}. This overrides any default. Use it occasionally, not in every sentence.`);
   if (p.about && p.about.trim()) lines.push(`- Background they shared: ${p.about.trim()}`);
   const style =
     p.responseStyle === 'concise'

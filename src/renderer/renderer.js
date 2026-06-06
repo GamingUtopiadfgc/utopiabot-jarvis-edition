@@ -196,9 +196,12 @@ window.jarvis.getSettings().then((s) => {
     // First launch: get to know the user before anything else.
     if (!s.profile?.onboarded) {
       startOnboarding();
-    } else if (s.voice.startupGreeting && !greeted) {
-      greeted = true;
-      speak(`Systems online. Good to see you, ${addressTerm(s.profile)}.`, true);
+    } else {
+      input.placeholder = `Speak or type a command, ${addressTerm(s.profile)}…`;
+      if (s.voice.startupGreeting && !greeted) {
+        greeted = true;
+        speak(`Systems online. Good to see you, ${addressTerm(s.profile)}.`, true);
+      }
     }
   });
 });
@@ -561,7 +564,6 @@ function onboardingAnswer(raw) {
 async function finishOnboarding() {
   const answers = onboarding.answers;
   onboarding = null;
-  input.placeholder = 'Speak or type a command, sir…';
   const profile = {
     name: answers.name || '',
     address: answers.address || 'sir',
@@ -575,7 +577,9 @@ async function finishOnboarding() {
     /* even if the save hiccups, don't trap the user in onboarding */
   }
   greeted = true;
-  const msg = `Wonderful — I've got it, ${addressTerm(profile)}. Systems online. How can I help?`;
+  const term = addressTerm(profile);
+  input.placeholder = `Speak or type a command, ${term}…`;
+  const msg = `Wonderful — I've got it, ${term}. Systems online. How can I help?`;
   addMessage('JARVIS', msg);
   speak(msg, true);
   setReactor('standby');
