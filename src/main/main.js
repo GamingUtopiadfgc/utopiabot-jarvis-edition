@@ -154,7 +154,7 @@ function wantsFileAccess(messages) {
 }
 
 // Build the per-request tool context from current settings.
-function buildToolContext(messages, { fileEditMode = false } = {}) {
+function buildToolContext(messages, { fileEditMode = false, desktopControl = false } = {}) {
   const fileEdit = fileEditMode && dangerousFeaturesEnabled;
   return {
     caps: {
@@ -165,6 +165,8 @@ function buildToolContext(messages, { fileEditMode = false } = {}) {
       powershell:
         settings.automation.powershell || settings.automation.desktopControl,
       scripting: settings.automation.scripting,
+      // Desktop control: mouse/keyboard/screen — Nightly only, session toggle.
+      desktop: (settings.automation.desktopControl || desktopControl) && dangerousFeaturesEnabled,
       // VM control is a dangerous feature — only honored in the Nightly build.
       vm: settings.vm.enabled && dangerousFeaturesEnabled,
       memory: settings.memory.longTerm,
@@ -338,7 +340,7 @@ ipcMain.handle('models:list', async () => ({
 // The renderer sends history + the chosen provider/model; we stream tokens back.
 ipcMain.handle(
   'chat:send',
-  async (event, { messages, requestId, provider, model, options, fileEditMode }) => {
+  async (event, { messages, requestId, provider, model, options, fileEditMode, desktopControl }) => {
     const send = (chunk) =>
       event.sender.send('chat:stream', { requestId, ...chunk });
 
@@ -386,7 +388,7 @@ ipcMain.handle(
       await brain.streamReply(messages, {
         model,
         options: opts,
-        toolCtx: buildToolContext(messages, { fileEditMode }),
+        toolCtx: buildToolContext(messages, { fileEditMode, desktopControl }),
         onText: (text) => send({ type: 'text', text }),
         onDone: handleDone,
         onError: (message) => send({ type: 'error', message }),
@@ -413,7 +415,7 @@ ipcMain.handle(
             await brain.streamReply(messages, {
               model,
               options: opts,
-              toolCtx: buildToolContext(messages, { fileEditMode }),
+              toolCtx: buildToolContext(messages, { fileEditMode, desktopControl }),
               onText: (text) => send({ type: 'text', text }),
               onDone: handleDone,
               onError: (message) => send({ type: 'error', message }),

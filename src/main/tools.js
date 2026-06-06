@@ -7,6 +7,7 @@ const { AUTOMATION_TOOLS, runAutomationTool } = require('./automation');
 const { VM_TOOLS, runVmTool } = require('./vm');
 const { MEMORY_TOOLS, runMemoryTool } = require('./memory');
 const { runScript } = require('./coderunner');
+const { DESKTOP_TOOLS, runDesktopTool } = require('./desktop');
 
 const CODE_TOOLS = [
   {
@@ -58,7 +59,8 @@ async function runCodeTool(name, input, ctx = {}) {
 }
 
 const ALL_NAMES = [
-  ...FILE_TOOLS, ...WRITE_TOOLS, ...AUTOMATION_TOOLS, ...VM_TOOLS, ...MEMORY_TOOLS, ...CODE_TOOLS,
+  ...FILE_TOOLS, ...WRITE_TOOLS, ...AUTOMATION_TOOLS, ...VM_TOOLS,
+  ...MEMORY_TOOLS, ...CODE_TOOLS, ...DESKTOP_TOOLS,
 ].map((t) => t.name);
 
 const has = (list, name) => list.some((t) => t.name === name);
@@ -72,6 +74,7 @@ function specs(caps = {}) {
   if (caps.vm)         list = list.concat(VM_TOOLS);
   if (caps.memory)     list = list.concat(MEMORY_TOOLS);
   if (caps.scripting)  list = list.concat(CODE_TOOLS);
+  if (caps.desktop)    list = list.concat(DESKTOP_TOOLS);
   return list;
 }
 
@@ -95,6 +98,7 @@ async function run(name, input, ctx = {}) {
   if (has(VM_TOOLS, name))        return runVmTool(name, input, ctx);
   if (has(MEMORY_TOOLS, name))    return runMemoryTool(name, input, ctx);
   if (has(CODE_TOOLS, name))      return runCodeTool(name, input, ctx);
+  if (has(DESKTOP_TOOLS, name))   return runDesktopTool(name, input);
   return `Error: unknown tool "${name}".`;
 }
 

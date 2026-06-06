@@ -15,7 +15,8 @@ const autoListenToggle = $('autolisten-toggle');
 // Conversation history sent to the brain each turn (Anthropic message shape).
 const history = [];
 let busy = false;
-let fileEditEnabled = false; // nightly only — toggled by the file-edit panel card
+let fileEditEnabled       = false; // nightly only — toggled by the file-edit panel card
+let desktopCtrlEnabled    = false; // nightly only — toggled by the desktop-control panel card
 
 // Live settings cache (from the Settings window).
 let appSettings = null;
@@ -403,6 +404,24 @@ window.jarvis.onCodeApproval(({ jobId, code, language, purpose }) => {
   transcript.appendChild(wrap);
   transcript.scrollTop = transcript.scrollHeight;
 });
+
+// Desktop-control toggle — only shown on Nightly builds.
+if (window.jarvis.dangerousFeatures) {
+  const card   = $('desktop-ctrl-card');
+  const toggle = $('desktop-ctrl-toggle');
+  if (card) card.style.display = '';
+  if (toggle) {
+    toggle.addEventListener('change', () => {
+      desktopCtrlEnabled = toggle.checked;
+      if (toggle.checked) {
+        addMessage('JARVIS',
+          'Desktop control enabled. I can now move the mouse, type, click, take screenshots, and interact with any open application.');
+      } else {
+        addMessage('JARVIS', 'Desktop control disabled.');
+      }
+    });
+  }
+}
 
 // File-edit toggle — only shown on Nightly builds.
 if (window.jarvis.dangerousFeatures) {
@@ -886,7 +905,8 @@ function askBrain(text) {
       : {};
     window.jarvis.sendChat(history, requestId, currentProvider, currentModel, {
       ...options,
-      fileEditMode: fileEditEnabled,
+      fileEditMode:    fileEditEnabled,
+      desktopControl:  desktopCtrlEnabled,
     });
   });
 }
